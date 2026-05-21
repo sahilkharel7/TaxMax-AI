@@ -4,10 +4,6 @@ from typing import Any
 
 from app.agents.base_agent import AgentOutput, BaseTaxAgent, rule_context_has_error
 from app.schemas import TaxScenarioRequest
-from app.services.gemini_client import (
-    GeminiNotConfiguredError,
-    generate_structured_agent_response,
-)
 
 
 SUMMARY_SYSTEM_PROMPT = """
@@ -86,6 +82,14 @@ class SummaryAgent(BaseTaxAgent):
         scenario: TaxScenarioRequest,
         tax_rule_context: dict[str, Any],
     ) -> str | None:
+        try:
+            from app.services.gemini_client import (
+                GeminiNotConfiguredError,
+                generate_structured_agent_response,
+            )
+        except ImportError:
+            return None
+
         try:
             response = generate_structured_agent_response(
                 system_prompt=SUMMARY_SYSTEM_PROMPT,

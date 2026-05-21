@@ -13,7 +13,7 @@ from app.services.gemini_client import (
 
 def test_missing_api_key_raises_controlled_error(monkeypatch: pytest.MonkeyPatch) -> None:
     get_settings.cache_clear()
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "")
 
     with pytest.raises(GeminiNotConfiguredError):
         generate_structured_agent_response(

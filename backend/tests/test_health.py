@@ -19,7 +19,7 @@ from app.main import app
 
 def _client(monkeypatch: pytest.MonkeyPatch, *, gemini_key: str | None) -> TestClient:
     if gemini_key is None:
-        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.setenv("GEMINI_API_KEY", "")
     else:
         monkeypatch.setenv("GEMINI_API_KEY", gemini_key)
     monkeypatch.setenv("GEMINI_MODEL", "gemini-1.5-flash")

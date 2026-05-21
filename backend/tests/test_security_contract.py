@@ -48,7 +48,7 @@ def client_with_key(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
 @pytest.fixture()
 def client_without_key(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "")
     monkeypatch.setenv("GEMINI_MODEL", "gemini-1.5-flash")
     get_settings.cache_clear()
     yield TestClient(app)

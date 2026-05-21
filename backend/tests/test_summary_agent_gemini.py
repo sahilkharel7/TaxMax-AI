@@ -21,8 +21,7 @@ def test_summary_agent_uses_deterministic_fallback_when_gemini_not_configured(
         raise GeminiNotConfiguredError("missing key")
 
     monkeypatch.setattr(
-        summary_agent,
-        "generate_structured_agent_response",
+        "app.services.gemini_client.generate_structured_agent_response",
         raise_not_configured,
     )
     scenario = TaxScenarioRequest(
@@ -54,8 +53,7 @@ def test_summary_agent_uses_deterministic_fallback_when_gemini_returns_fallback(
         }
 
     monkeypatch.setattr(
-        summary_agent,
-        "generate_structured_agent_response",
+        "app.services.gemini_client.generate_structured_agent_response",
         return_fallback,
     )
     scenario = TaxScenarioRequest(
@@ -91,8 +89,7 @@ def test_summary_agent_sends_only_sanitized_fields_to_gemini(
         }
 
     monkeypatch.setattr(
-        summary_agent,
-        "generate_structured_agent_response",
+        "app.services.gemini_client.generate_structured_agent_response",
         return_summary,
     )
     scenario = TaxScenarioRequest(

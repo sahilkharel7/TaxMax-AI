@@ -78,3 +78,4 @@ htmlcov/
 # Tooling
 .python-version
 .ipynb_checkpoints/
+.vercel
