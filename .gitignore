@@ -79,3 +79,5 @@ htmlcov/
 .python-version
 .ipynb_checkpoints/
 .vercel
+
+prompts/

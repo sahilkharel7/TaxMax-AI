@@ -26,7 +26,6 @@ export function useTaxAnalysis({
 
   useEffect(() => {
     if (!enabled) {
-      setState({ status: "idle" });
       lastKeyRef.current = null;
       return;
     }
@@ -34,8 +33,11 @@ export function useTaxAnalysis({
 
     const controller = new AbortController();
     let cancelled = false;
-    setState({ status: "loading" });
     lastKeyRef.current = cacheKey;
+
+    void Promise.resolve().then(() => {
+      if (!cancelled) setState({ status: "loading" });
+    });
 
     (async () => {
       try {
@@ -59,5 +61,5 @@ export function useTaxAnalysis({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheKey, enabled]);
 
-  return state;
+  return enabled ? state : { status: "idle" };
 }

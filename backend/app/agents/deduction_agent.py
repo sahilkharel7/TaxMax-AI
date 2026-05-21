@@ -49,6 +49,68 @@ class DeductionAgent(BaseTaxAgent):
                 )
             )
 
+        if scenario.self_employment is not None:
+            findings.append(
+                self.finding(
+                    category="deductions",
+                    summary="Self-employment expense review may apply because business income or expense facts are present.",
+                    confidence="medium",
+                    rationale="The scenario includes self-employment review fields.",
+                    suggested_action="Collect receipts, mileage logs, home office facts, and 1099 records before reviewing business deductions.",
+                )
+            )
+
+        if scenario.itemized_deductions is not None:
+            itemized = scenario.itemized_deductions
+            itemized_values = [
+                itemized.mortgage_interest,
+                itemized.property_taxes,
+                itemized.state_local_taxes_paid,
+                itemized.charitable_cash,
+                itemized.charitable_non_cash,
+                itemized.medical_expenses,
+            ]
+            if any(value is not None and value > 0 for value in itemized_values):
+                findings.append(
+                    self.finding(
+                        category="deductions",
+                        summary="Itemized deduction review may apply because itemized expense inputs are present.",
+                        confidence="medium",
+                        rationale="The scenario includes potential itemized deduction amounts.",
+                        suggested_action="Compare documented itemized deductions with the applicable standard deduction before filing decisions.",
+                    )
+                )
+
+        if scenario.retirement is not None:
+            retirement = scenario.retirement
+            if (
+                retirement.traditional_ira_contribution is not None
+                or retirement.employer_plan_contribution is not None
+                or retirement.has_employer_retirement_plan is not None
+            ):
+                findings.append(
+                    self.finding(
+                        category="deductions",
+                        summary="Retirement contribution review may apply and requires income, age, and plan coverage confirmation.",
+                        confidence="medium",
+                        rationale="The scenario includes retirement contribution facts.",
+                        suggested_action="Confirm contribution amounts, dates, employer plan coverage, and income before reviewing deductibility.",
+                    )
+                )
+
+        if scenario.hsa is not None and (
+            scenario.hsa.had_hdhp_coverage or scenario.hsa.hsa_contribution is not None
+        ):
+            findings.append(
+                self.finding(
+                    category="deductions",
+                    summary="HSA contribution review may apply if HDHP eligibility and contribution limits are confirmed.",
+                    confidence="medium",
+                    rationale="The scenario includes HSA facts.",
+                    suggested_action="Confirm HDHP coverage months, HSA contributions, employer contributions, and any distributions.",
+                )
+            )
+
         if scenario.education and scenario.education.qualified_expenses is not None:
             findings.append(
                 self.finding(

@@ -5,4 +5,5 @@ export {
   isBackendEnabled,
   postAnalyze,
   postChat,
+  postOptimize,
 } from "../api/taxApi";

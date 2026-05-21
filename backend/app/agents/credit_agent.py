@@ -64,4 +64,52 @@ class CreditAgent(BaseTaxAgent):
                 )
             )
 
+        if scenario.dependents:
+            findings.append(
+                self.finding(
+                    category="credits",
+                    summary="Dependent-related credit review may apply because dependent facts are present.",
+                    confidence="medium",
+                    rationale="The scenario includes dependent records.",
+                    suggested_action="Confirm dependent age, relationship, residency, support, and identification details before reviewing credits.",
+                )
+            )
+
+        if scenario.childcare and scenario.childcare.expenses is not None:
+            findings.append(
+                self.finding(
+                    category="credits",
+                    summary="Child and dependent care credit review may apply if work-related care and provider details are confirmed.",
+                    confidence="medium",
+                    rationale="The scenario includes dependent care expenses.",
+                    suggested_action="Collect provider name, provider tax ID, receipts, and work-related care facts before reviewing the credit.",
+                )
+            )
+
+        if scenario.retirement and scenario.retirement.eligible_for_savers_credit_review:
+            findings.append(
+                self.finding(
+                    category="credits",
+                    summary="Saver's Credit review may apply if income, age, student, dependent, and contribution facts are confirmed.",
+                    confidence="low",
+                    rationale="The scenario indicates Saver's Credit review interest.",
+                    suggested_action="Confirm retirement contribution records and AGI before reviewing Saver's Credit.",
+                )
+            )
+
+        if scenario.clean_energy and (
+            scenario.clean_energy.home_energy_improvements is not None
+            or scenario.clean_energy.solar_or_battery_storage is not None
+            or scenario.clean_energy.clean_vehicle_purchase
+        ):
+            findings.append(
+                self.finding(
+                    category="credits",
+                    summary="Clean energy or vehicle credit review may apply if product, property, income, and documentation requirements are confirmed.",
+                    confidence="low",
+                    rationale="The scenario includes clean energy or vehicle credit signals.",
+                    suggested_action="Gather invoices, manufacturer or seller documentation, and placed-in-service details before reviewing credits.",
+                )
+            )
+
         return findings, warnings

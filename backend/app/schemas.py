@@ -15,6 +15,8 @@ FilingStatus = Literal[
 ]
 ConfidenceLevel = Literal["low", "medium", "high"]
 WarningSeverity = Literal["info", "low", "medium", "high"]
+OpportunityImpact = Literal["low", "medium", "high", "unknown"]
+RiskLevel = Literal["low", "medium", "high", "unknown"]
 DocumentType = Literal[
     "w2",
     "1098_t",
@@ -28,6 +30,20 @@ ResponseStatus = Literal[
     "needs_more_information",
     "review_required",
     "error",
+]
+OpportunityCategory = Literal[
+    "deduction",
+    "credit",
+    "filing_status",
+    "state_tax",
+    "income",
+    "retirement",
+    "hsa",
+    "education",
+    "self_employment",
+    "documentation",
+    "risk",
+    "general",
 ]
 
 
@@ -110,6 +126,24 @@ class TaxpayerProfile(BaseModel):
         ge=0,
         description="Number of dependents entered by the user, if any.",
     )
+    age: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=125,
+        description="Taxpayer age at the end of the tax year, if known.",
+    )
+    is_blind: Optional[bool] = Field(
+        default=None,
+        description="Whether the taxpayer is blind for standard deduction review.",
+    )
+    marital_status_known: Optional[bool] = Field(
+        default=None,
+        description="Whether marital status facts have been confirmed.",
+    )
+    paid_more_than_half_home_cost: Optional[bool] = Field(
+        default=None,
+        description="Potential head-of-household support fact; not a final determination.",
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -162,6 +196,25 @@ class IncomeInput(BaseModel):
         ge=0,
         description="Other income reported by the user for review context.",
     )
+    unemployment_income: Optional[Decimal] = Field(
+        default=None,
+        ge=0,
+        description="Unemployment compensation, if known.",
+    )
+    dividend_income: Optional[Decimal] = Field(
+        default=None,
+        ge=0,
+        description="Dividend income from Form 1099-DIV or manual entry.",
+    )
+    capital_gain_income: Optional[Decimal] = Field(
+        default=None,
+        description="Capital gain or loss context supplied by the user.",
+    )
+    tip_income: Optional[Decimal] = Field(
+        default=None,
+        ge=0,
+        description="Tip income, including unreported tips where relevant.",
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -202,6 +255,27 @@ class EducationInput(BaseModel):
         default=None,
         description="Education institution name, if supplied by the user or document.",
     )
+    student_loan_interest: Optional[Decimal] = Field(
+        default=None,
+        ge=0,
+        description="Student loan interest paid during the tax year, if known.",
+    )
+    pursuit_of_degree: Optional[bool] = Field(
+        default=None,
+        description="Whether the student pursued a degree or recognized credential.",
+    )
+    half_time_student: Optional[bool] = Field(
+        default=None,
+        description="Whether the student was enrolled at least half time.",
+    )
+    completed_first_four_years: Optional[bool] = Field(
+        default=None,
+        description="AOTC review fact: whether first four years of postsecondary education were completed before the tax year.",
+    )
+    felony_drug_conviction: Optional[bool] = Field(
+        default=None,
+        description="AOTC review fact; must be confirmed before eligibility discussion.",
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -240,6 +314,15 @@ class DocumentInput(BaseModel):
         default=None,
         description="Raw extracted field values for review; not treated as final tax facts.",
     )
+    confirmed_fields: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="User-confirmed extracted values. Agents may use these as reviewed facts but not final filing data.",
+    )
+    file_size_bytes: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description="Uploaded file size for safety validation, if supplied by the client.",
+    )
     notes: Optional[str] = Field(
         default=None,
         description="Optional user or system notes about this document.",
@@ -263,6 +346,116 @@ class DocumentInput(BaseModel):
     )
 
 
+class SpouseProfile(BaseModel):
+    """Optional spouse facts for married filing scenario review."""
+
+    has_income: Optional[bool] = Field(
+        default=None,
+        description="Whether spouse has income that may affect MFJ/MFS review.",
+    )
+    w2_wages: Optional[Decimal] = Field(default=None, ge=0)
+    federal_withholding: Optional[Decimal] = Field(default=None, ge=0)
+    student_loan_plan: Optional[bool] = Field(
+        default=None,
+        description="Whether spouse student-loan repayment or benefit facts may affect MFS/MFJ planning.",
+    )
+    itemizes_separately: Optional[bool] = Field(
+        default=None,
+        description="Whether spouse would itemize if filing separately.",
+    )
+
+
+class DependentInput(BaseModel):
+    """Dependent facts needed for cautious credit and filing-status review."""
+
+    age: Optional[int] = Field(default=None, ge=0, le=125)
+    relationship: Optional[str] = Field(default=None)
+    months_lived_with_taxpayer: Optional[int] = Field(default=None, ge=0, le=12)
+    provided_over_half_support: Optional[bool] = Field(default=None)
+    has_valid_ssn: Optional[bool] = Field(default=None)
+    was_student: Optional[bool] = Field(default=None)
+    disabled: Optional[bool] = Field(default=None)
+    childcare_expenses_paid: Optional[Decimal] = Field(default=None, ge=0)
+
+
+class ItemizedDeductionsInput(BaseModel):
+    """Potential itemized deduction facts for review."""
+
+    mortgage_interest: Optional[Decimal] = Field(default=None, ge=0)
+    property_taxes: Optional[Decimal] = Field(default=None, ge=0)
+    state_local_taxes_paid: Optional[Decimal] = Field(default=None, ge=0)
+    charitable_cash: Optional[Decimal] = Field(default=None, ge=0)
+    charitable_non_cash: Optional[Decimal] = Field(default=None, ge=0)
+    medical_expenses: Optional[Decimal] = Field(default=None, ge=0)
+    gambling_losses: Optional[Decimal] = Field(default=None, ge=0)
+    gambling_winnings: Optional[Decimal] = Field(default=None, ge=0)
+
+
+class SelfEmploymentInput(BaseModel):
+    """Self-employment facts used to find documentation and deduction review areas."""
+
+    gross_income: Optional[Decimal] = Field(default=None, ge=0)
+    expenses: Optional[Decimal] = Field(default=None, ge=0)
+    home_office_used_regularly_exclusively: Optional[bool] = Field(default=None)
+    business_miles: Optional[Decimal] = Field(default=None, ge=0)
+    has_1099_nec: Optional[bool] = Field(default=None)
+    made_estimated_payments: Optional[bool] = Field(default=None)
+
+
+class RetirementInput(BaseModel):
+    """Retirement contribution facts for saver, IRA, and deferral review."""
+
+    traditional_ira_contribution: Optional[Decimal] = Field(default=None, ge=0)
+    roth_ira_contribution: Optional[Decimal] = Field(default=None, ge=0)
+    employer_plan_contribution: Optional[Decimal] = Field(default=None, ge=0)
+    has_employer_retirement_plan: Optional[bool] = Field(default=None)
+    eligible_for_savers_credit_review: Optional[bool] = Field(default=None)
+
+
+class HsaInput(BaseModel):
+    """HSA facts for contribution and documentation review."""
+
+    had_hdhp_coverage: Optional[bool] = Field(default=None)
+    coverage_type: Optional[Literal["self_only", "family"]] = Field(default=None)
+    hsa_contribution: Optional[Decimal] = Field(default=None, ge=0)
+    employer_hsa_contribution: Optional[Decimal] = Field(default=None, ge=0)
+
+
+class ChildcareInput(BaseModel):
+    """Dependent care facts for credit review."""
+
+    expenses: Optional[Decimal] = Field(default=None, ge=0)
+    care_provider_name_present: Optional[bool] = Field(default=None)
+    care_provider_tax_id_present: Optional[bool] = Field(default=None)
+    work_related: Optional[bool] = Field(default=None)
+
+
+class CleanEnergyInput(BaseModel):
+    """Clean energy and vehicle signals for cautious credit review."""
+
+    home_energy_improvements: Optional[Decimal] = Field(default=None, ge=0)
+    solar_or_battery_storage: Optional[Decimal] = Field(default=None, ge=0)
+    clean_vehicle_purchase: Optional[bool] = Field(default=None)
+    vehicle_make_model_year_present: Optional[bool] = Field(default=None)
+    seller_report_available: Optional[bool] = Field(default=None)
+
+
+class TaxSavingsPreferences(BaseModel):
+    """User goal metadata for ranking opportunities."""
+
+    priority: Optional[
+        Literal[
+            "maximize_refund_review",
+            "reduce_taxable_income",
+            "find_missing_documents",
+            "compare_filing_options",
+            "general_review",
+        ]
+    ] = Field(default="general_review")
+    risk_tolerance: Optional[Literal["low", "medium", "high"]] = Field(default="low")
+    wants_state_review: Optional[bool] = Field(default=True)
+
+
 class TaxScenarioRequest(BaseModel):
     """Structured input for an AI-assisted tax scenario review."""
 
@@ -277,9 +470,45 @@ class TaxScenarioRequest(BaseModel):
         default=None,
         description="Education-related inputs available for review.",
     )
+    spouse: Optional[SpouseProfile] = Field(
+        default=None,
+        description="Spouse facts for cautious filing-status comparison.",
+    )
+    dependents: list[DependentInput] = Field(
+        default_factory=list,
+        description="Dependent facts used for credit and filing-status review.",
+    )
+    itemized_deductions: Optional[ItemizedDeductionsInput] = Field(
+        default=None,
+        description="Potential itemized deduction inputs.",
+    )
+    self_employment: Optional[SelfEmploymentInput] = Field(
+        default=None,
+        description="Self-employment facts and expense signals.",
+    )
+    retirement: Optional[RetirementInput] = Field(
+        default=None,
+        description="Retirement contribution facts for legal savings review.",
+    )
+    hsa: Optional[HsaInput] = Field(
+        default=None,
+        description="Health Savings Account facts for contribution review.",
+    )
+    childcare: Optional[ChildcareInput] = Field(
+        default=None,
+        description="Dependent care expense facts for credit review.",
+    )
+    clean_energy: Optional[CleanEnergyInput] = Field(
+        default=None,
+        description="Clean energy and vehicle credit signals.",
+    )
     documents: list[DocumentInput] = Field(
         default_factory=list,
         description="Uploaded or parsed tax documents available to the agent workflow.",
+    )
+    tax_savings_preferences: Optional[TaxSavingsPreferences] = Field(
+        default=None,
+        description="User preferences for ranking review opportunities.",
     )
     user_goal: Optional[str] = Field(
         default=None,
@@ -409,6 +638,35 @@ class AgentWarning(BaseModel):
     )
 
 
+class TaxSavingsOpportunity(BaseModel):
+    """Legal tax-saving review opportunity returned by optimization agents."""
+
+    opportunity_id: str = Field(description="Stable identifier for this opportunity.")
+    agent_name: str = Field(description="Agent that raised the opportunity.")
+    category: OpportunityCategory = Field(description="Opportunity category.")
+    title: str = Field(description="Short user-facing title.")
+    summary: str = Field(
+        description="Cautious plain-language explanation without final claims.",
+    )
+    potential_impact: OpportunityImpact = Field(
+        description="Directional impact only; not a final tax calculation.",
+    )
+    confidence: ConfidenceLevel = Field(description="Confidence based on supplied facts.")
+    required_facts: list[str] = Field(default_factory=list)
+    required_documents: list[str] = Field(default_factory=list)
+    estimated_directional_effect: Optional[str] = Field(
+        default=None,
+        description="Non-numeric description of possible tax direction.",
+    )
+    risk_level: RiskLevel = Field(description="Review risk level.")
+    risk_notes: list[str] = Field(default_factory=list)
+    suggested_next_step: str = Field(
+        description="Next action framed as review guidance, not a tax instruction.",
+    )
+    professional_review_required: bool = Field(default=True)
+    source_references: list[str] = Field(default_factory=list)
+
+
 class TaxAnalysisResponse(BaseModel):
     """Validated agent response for tax scenario review."""
 
@@ -478,6 +736,29 @@ class TaxAnalysisResponse(BaseModel):
     )
 
 
+class TaxOptimizationResponse(BaseModel):
+    """Structured response for legal tax savings review."""
+
+    status: ResponseStatus = Field(description="Overall optimization status.")
+    opportunities: list[TaxSavingsOpportunity] = Field(default_factory=list)
+    warnings: list[AgentWarning] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    next_questions: list[str] = Field(default_factory=list)
+    review_package_summary: str = Field(
+        default=(
+            "TaxMax AI prepared a legal tax-savings review checklist. Confirm all facts "
+            "and review opportunities with a qualified tax professional before filing."
+        ),
+    )
+    disclaimer: str = Field(
+        default=(
+            "TaxMax AI identifies potential legal tax-saving opportunities for review. "
+            "It does not provide legal, tax, or financial advice and does not guarantee "
+            "a refund, lower tax, or eligibility for any deduction or credit."
+        )
+    )
+
+
 class ChatRequest(BaseModel):
     """User chat message with optional tax scenario context."""
 
@@ -526,6 +807,10 @@ class ChatResponse(BaseModel):
     warnings: list[AgentWarning] = Field(
         default_factory=list,
         description="Any relevant warnings or uncertainty signals raised during chat.",
+    )
+    related_opportunities: list[TaxSavingsOpportunity] = Field(
+        default_factory=list,
+        description="Optional opportunities related to the user's message.",
     )
     missing_information: list[str] = Field(
         default_factory=list,

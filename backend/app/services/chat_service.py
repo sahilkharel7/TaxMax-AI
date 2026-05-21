@@ -17,8 +17,10 @@ from app.schemas import (
     ChatRequest,
     ChatResponse,
     ResponseStatus,
+    TaxSavingsOpportunity,
     TaxScenarioRequest,
 )
+from app.services.tax_optimization_service import optimize_tax_scenario
 
 
 @dataclass(frozen=True)
@@ -150,7 +152,13 @@ def generate_chat_reply(request: ChatRequest) -> ChatResponse:
     frontend can render its full chat UI today.
     """
 
-    answer = _match_reply(request.message)
+    related_opportunities: list[TaxSavingsOpportunity] = []
+    if request.scenario is not None and _is_savings_intent(request.message):
+        optimization = optimize_tax_scenario(request.scenario)
+        related_opportunities = optimization.opportunities[:3]
+        answer = _optimization_answer(related_opportunities)
+    else:
+        answer = _match_reply(request.message)
     status, warnings, missing = _scenario_signals(request.scenario)
     next_questions = _next_questions(request.scenario)
 
@@ -159,6 +167,7 @@ def generate_chat_reply(request: ChatRequest) -> ChatResponse:
         answer=answer,
         next_questions=next_questions,
         warnings=warnings,
+        related_opportunities=related_opportunities,
         missing_information=missing,
     )
 
@@ -168,6 +177,31 @@ def _match_reply(message: str) -> str:
         if rule.pattern.search(message):
             return rule.answer
     return _DEFAULT_REPLY
+
+
+def _is_savings_intent(message: str) -> bool:
+    return bool(
+        re.search(
+            r"save|saving|deduct|deduction|credit|refund|owe less|pay less|optimi[sz]e|loophole|tax return|max",
+            message,
+            re.IGNORECASE,
+        )
+    )
+
+
+def _optimization_answer(opportunities: list[TaxSavingsOpportunity]) -> str:
+    if not opportunities:
+        return (
+            "I do not see a specific tax-saving opportunity from the current facts yet. "
+            "Add income, deduction, credit, dependent, education, or state details and I can help surface items for professional review."
+        )
+
+    top = opportunities[0]
+    return (
+        f"One potential legal tax-savings review area is: {top.title}. "
+        f"{top.summary} This is not a final eligibility decision. "
+        f"Next step: {top.suggested_next_step}"
+    )
 
 
 def _scenario_signals(

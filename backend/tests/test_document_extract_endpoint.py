@@ -72,6 +72,31 @@ def test_extract_rejects_unsupported_document_type() -> None:
     assert response.status_code == 422
 
 
+def test_extract_rejects_unsupported_file_extension() -> None:
+    response = client.post(
+        "/api/documents/extract",
+        json={
+            "document_type": "w2",
+            "file_name": "sample.exe",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_extract_rejects_oversized_file() -> None:
+    response = client.post(
+        "/api/documents/extract",
+        json={
+            "document_type": "w2",
+            "file_name": "sample.pdf",
+            "file_size_bytes": 26 * 1024 * 1024,
+        },
+    )
+
+    assert response.status_code == 413
+
+
 def test_extract_rejects_missing_document_type() -> None:
     response = client.post(
         "/api/documents/extract",

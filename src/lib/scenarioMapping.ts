@@ -150,6 +150,13 @@ export function buildScenarioRequest(
           ? "parsed"
           : "error",
     extracted_fields: null,
+    confirmed_fields:
+      doc.kind === "W-2" && w2
+        ? Object.fromEntries(w2.fields.map((field) => [field.id, field.value]))
+        : doc.kind === "1098-T" && t1098
+          ? Object.fromEntries(t1098.fields.map((field) => [field.id, field.value]))
+          : null,
+    file_size_bytes: doc.sizeBytes,
     notes: null,
   }));
 
@@ -157,7 +164,44 @@ export function buildScenarioRequest(
     profile: apiProfile,
     income,
     education,
+    dependents: [],
+    itemized_deductions: null,
+    self_employment:
+      profile.received1099 === "yes"
+        ? {
+            gross_income: null,
+            expenses: null,
+            home_office_used_regularly_exclusively: null,
+            business_miles: null,
+            has_1099_nec: true,
+            made_estimated_payments: null,
+          }
+        : null,
+    retirement: {
+      traditional_ira_contribution: null,
+      roth_ira_contribution: null,
+      employer_plan_contribution: null,
+      has_employer_retirement_plan: null,
+      eligible_for_savers_credit_review:
+        manual.credits.savingsContributionsCredit || null,
+    },
+    hsa: null,
+    childcare:
+      manual.credits.childTaxCredit
+        ? {
+            expenses: null,
+            care_provider_name_present: null,
+            care_provider_tax_id_present: null,
+            work_related: null,
+          }
+        : null,
+    clean_energy: null,
     documents: documentBodies,
+    tax_savings_preferences: {
+      priority: "maximize_refund_review",
+      risk_tolerance: "low",
+      wants_state_review: true,
+    },
     user_goal: userGoal ?? null,
   };
 }

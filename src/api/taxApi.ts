@@ -6,6 +6,7 @@ import type {
   ChatResponseBody,
   HealthResponseBody,
   TaxAnalysisResponseBody,
+  TaxOptimizationResponseBody,
   TaxRulesResponseBody,
   TaxScenarioRequestBody,
 } from "../lib/apiTypes";
@@ -116,6 +117,21 @@ export function postAnalyze(
   }
 
   return request<TaxAnalysisResponseBody>("/tax/analyze", {
+    method: "POST",
+    body: JSON.stringify(body),
+    signal,
+  });
+}
+
+export function postOptimize(
+  body: TaxScenarioRequestBody,
+  signal?: AbortSignal,
+): Promise<TaxOptimizationResponseBody> {
+  if (!isBackendEnabled()) {
+    return Promise.resolve(buildMockTaxOptimizationResponse(body));
+  }
+
+  return request<TaxOptimizationResponseBody>("/tax/optimize", {
     method: "POST",
     body: JSON.stringify(body),
     signal,
@@ -388,6 +404,180 @@ function buildMockTaxAnalysisResponse(
     missing_information: dedupeStrings(missingInformation),
     disclaimer:
       "TaxMax AI provides AI-assisted preparation support and does not provide legal, tax, or financial advice. Review all information with a qualified professional before filing.",
+  };
+}
+
+function buildMockTaxOptimizationResponse(
+  body: TaxScenarioRequestBody,
+): TaxOptimizationResponseBody {
+  const opportunities: TaxOptimizationResponseBody["opportunities"] = [];
+  const missing_information: string[] = [];
+  const next_questions: string[] = [];
+  const warnings: TaxOptimizationResponseBody["warnings"] = [];
+  const profile = body.profile;
+  const income = body.income;
+  const education = body.education;
+  const documents = body.documents ?? [];
+
+  if (profile.filing_status == null) {
+    missing_information.push("Filing status");
+    next_questions.push("Which filing status are you considering?");
+  }
+  if (profile.resident_state == null) {
+    missing_information.push("Resident state");
+    next_questions.push("What was your resident state for the tax year?");
+  }
+  if (profile.can_be_claimed_as_dependent == null) {
+    missing_information.push("Dependency status");
+    next_questions.push("Can another taxpayer claim you as a dependent?");
+    warnings.push({
+      severity: "medium",
+      code: "OPTIMIZATION_DEPENDENCY_UNKNOWN",
+      message:
+        "Dependency status is needed before credit and education opportunities can be reviewed safely.",
+      recommended_follow_up:
+        "Confirm whether another taxpayer can claim the user.",
+    });
+  }
+
+  if (education?.qualified_expenses != null || profile.received_1098_t === true) {
+    opportunities.push({
+      opportunity_id: "credit_education_review",
+      agent_name: "Credit Discovery Agent",
+      category: "credit",
+      title: "Review education credits",
+      summary:
+        "Student or 1098-T facts are present, so education credit review may apply if requirements are confirmed.",
+      potential_impact: "medium",
+      confidence: "medium",
+      required_facts: [
+        "Dependency status",
+        "Qualified expenses",
+        "Scholarships or grants",
+      ],
+      required_documents: ["Form 1098-T", "School account statement"],
+      estimated_directional_effect:
+        "May reduce tax if credit requirements are confirmed.",
+      risk_level: "medium",
+      risk_notes: [
+        "Education credits require exact student, institution, and dependency facts.",
+      ],
+      suggested_next_step:
+        "Confirm 1098-T details and student eligibility facts before professional review.",
+      professional_review_required: true,
+      source_references: ["Mock mode"],
+    });
+  }
+
+  if (income?.self_employment_income != null) {
+    opportunities.push({
+      opportunity_id: "deduction_self_employment_expenses",
+      agent_name: "Deduction Discovery Agent",
+      category: "self_employment",
+      title: "Review self-employment expense documentation",
+      summary:
+        "Self-employment income is present, so ordinary and necessary business expenses may need review.",
+      potential_impact: "high",
+      confidence: "medium",
+      required_facts: ["Gross business income", "Expense categories"],
+      required_documents: ["1099 records", "Receipts", "Mileage log if relevant"],
+      estimated_directional_effect:
+        "May reduce net self-employment income if expenses are allowable and documented.",
+      risk_level: "medium",
+      risk_notes: ["Self-employment deductions need strong records."],
+      suggested_next_step:
+        "Organize income records, receipts, and mileage before professional review.",
+      professional_review_required: true,
+      source_references: ["Mock mode"],
+    });
+  }
+
+  if (profile.resident_state != null) {
+    opportunities.push({
+      opportunity_id: `state_${profile.resident_state.toLowerCase()}_review`,
+      agent_name: "State Tax Optimization Agent",
+      category: "state_tax",
+      title: `Review ${profile.resident_state.toUpperCase()} state tax opportunities`,
+      summary:
+        "Resident-state facts are present, so state-specific deductions, credits, and itemized deduction differences may be worth reviewing.",
+      potential_impact: "medium",
+      confidence: "medium",
+      required_facts: ["Resident state", "Work state", "State withholding"],
+      required_documents: ["State withholding forms"],
+      estimated_directional_effect:
+        "May affect state taxable income or credits if state-specific rules apply.",
+      risk_level: "medium",
+      risk_notes: ["State rules can differ from federal rules."],
+      suggested_next_step:
+        "Review resident and work-state facts against state instructions before filing.",
+      professional_review_required: true,
+      source_references: ["Mock mode"],
+    });
+  }
+
+  if (documents.some((doc) => doc.extraction_status === "needs_review")) {
+    opportunities.push({
+      opportunity_id: "documentation_confirm_extracted_fields",
+      agent_name: "Risk Review Agent",
+      category: "documentation",
+      title: "Confirm document fields before claiming opportunities",
+      summary:
+        "One or more documents still need review before extracted values are treated as reliable for savings analysis.",
+      potential_impact: "unknown",
+      confidence: "high",
+      required_facts: ["User-confirmed extracted values"],
+      required_documents: documents
+        .filter((doc) => doc.extraction_status === "needs_review")
+        .map((doc) => doc.file_name ?? doc.document_type),
+      estimated_directional_effect:
+        "Confirming documents can improve the reliability of deduction and credit review.",
+      risk_level: "high",
+      risk_notes: ["Unconfirmed extracted values can lead to incorrect review results."],
+      suggested_next_step:
+        "Compare extracted fields against the original documents and confirm or correct them.",
+      professional_review_required: true,
+      source_references: ["Mock mode"],
+    });
+  }
+
+  if (opportunities.length === 0) {
+    opportunities.push({
+      opportunity_id: "general_add_more_details",
+      agent_name: "Final Savings Strategy Agent",
+      category: "general",
+      title: "Add more details for a deeper savings review",
+      summary:
+        "TaxMax AI needs more income, deduction, credit, dependent, education, or state facts to surface specific savings opportunities.",
+      potential_impact: "unknown",
+      confidence: "low",
+      required_facts: ["Income", "Filing status", "Deductions", "Credits"],
+      required_documents: ["W-2", "1099 forms", "1098-T if applicable"],
+      estimated_directional_effect:
+        "More complete facts may reveal review opportunities.",
+      risk_level: "unknown",
+      risk_notes: ["Insufficient facts limit savings review."],
+      suggested_next_step:
+        "Complete the profile and add documents or manual values.",
+      professional_review_required: true,
+      source_references: ["Mock mode"],
+    });
+  }
+
+  return {
+    status:
+      missing_information.length > 0
+        ? "needs_more_information"
+        : opportunities.some((item) => item.risk_level === "medium" || item.risk_level === "high")
+          ? "review_required"
+          : "draft",
+    opportunities,
+    warnings,
+    missing_information: dedupeStrings(missing_information),
+    next_questions: dedupeStrings(next_questions),
+    review_package_summary:
+      "TaxMax AI identified potential legal tax-savings review areas. Confirm all facts with a qualified tax professional before filing.",
+    disclaimer:
+      "TaxMax AI identifies potential legal tax-saving opportunities for review. It does not provide legal, tax, or financial advice and does not guarantee a refund, lower tax, or eligibility for any deduction or credit.",
   };
 }
 

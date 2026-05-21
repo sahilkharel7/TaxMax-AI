@@ -4,27 +4,43 @@
   "tax_year": 2025,
   "last_reviewed": "2026-05-21",
   "source_references": [
-    "California Franchise Tax Board forms and publications landing pages",
-    "California Franchise Tax Board 2025 tax year guidance, pending final backend rule review"
+    "https://www.ftb.ca.gov/file/personal/deductions/index.html",
+    "https://www.ftb.ca.gov/file/personal/tax-calculator-tables-rates.asp"
   ],
-  "filing_status_rules": {
-    "status": "placeholder",
-    "todo": "TODO: Add verified California filing status rule metadata before using this in analysis."
+  "filing_statuses": [
+    "single",
+    "married_filing_jointly",
+    "married_filing_separately",
+    "head_of_household",
+    "qualifying_surviving_spouse"
+  ],
+  "standard_deduction": {
+    "single": 5706,
+    "married_filing_separately": 5706,
+    "married_filing_jointly": 11412,
+    "head_of_household": 11412,
+    "qualifying_surviving_spouse": 11412,
+    "dependent_minimum": 1300,
+    "source": "California Franchise Tax Board deductions page, 2025 standard deduction amounts"
+  },
+  "itemized_deductions": {
+    "medical_floor_percent_of_federal_agi": 7.5,
+    "home_mortgage_interest_note": "California may allow home mortgage interest on home purchases up to $1,000,000, while federal rules may differ.",
+    "miscellaneous_itemized_note": "Certain miscellaneous itemized deductions may be allowed for California when federal law disallows them.",
+    "gambling_losses_note": "For tax years 2025 and before, gambling deductions are limited to gambling winnings.",
+    "source": "California Franchise Tax Board deductions page, common itemized deductions"
   },
   "state_tax_brackets": {
-    "status": "placeholder",
-    "todo": "TODO: Add verified California 2025 tax brackets. Do not use placeholder data for calculations."
+    "status": "available_by_ftb_table",
+    "note": "Use FTB 2025 Form 540 tax tables or calculator for exact California tax computations. TaxMax agents should not compute final CA tax from this lightweight context."
   },
   "credits": {
-    "status": "placeholder",
-    "todo": "TODO: Add reviewed California credit metadata only after source validation."
-  },
-  "deductions": {
-    "status": "placeholder",
-    "todo": "TODO: Add reviewed California deduction metadata only after source validation."
+    "status": "review_required",
+    "note": "California-specific credits require verified form-level facts before user-facing guidance."
   },
   "notes": [
-    "Placeholder state rule file for agent context only.",
-    "No detailed brackets or eligibility determinations are encoded yet."
+    "California has a lower standard deduction than the IRS.",
+    "California does not conform to all federal itemized deductions.",
+    "State context is for opportunity review only, not final state tax computation."
   ]
 }

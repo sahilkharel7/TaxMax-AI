@@ -13,11 +13,14 @@ const ONLINE_POLL_INTERVAL_MS = 30_000;
 const OFFLINE_POLL_INTERVAL_MS = 3_000;
 
 export function useBackendHealth(): BackendHealthState {
-  const [state, setState] = useState<BackendHealthState>({ status: "checking" });
+  const [state, setState] = useState<BackendHealthState>(() =>
+    isBackendEnabled()
+      ? { status: "checking" }
+      : { status: "online", service: "Mock mode" },
+  );
 
   useEffect(() => {
     if (!isBackendEnabled()) {
-      setState({ status: "online", service: "Mock mode" });
       return;
     }
 

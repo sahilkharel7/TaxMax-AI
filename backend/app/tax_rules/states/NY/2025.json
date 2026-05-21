@@ -4,27 +4,47 @@
   "tax_year": 2025,
   "last_reviewed": "2026-05-21",
   "source_references": [
-    "New York State Department of Taxation and Finance forms and guidance landing pages",
-    "New York State 2025 tax year guidance, pending final backend rule review"
+    "https://www.tax.ny.gov/forms/html-instructions/2025/it/it201i-2025.htm",
+    "https://www.tax.ny.gov/pit/file/itemized-deductions-2025.htm"
   ],
-  "filing_status_rules": {
-    "status": "placeholder",
-    "todo": "TODO: Add verified New York filing status rule metadata before using this in analysis."
+  "filing_statuses": [
+    "single",
+    "married_filing_jointly",
+    "married_filing_separately",
+    "head_of_household",
+    "qualifying_surviving_spouse"
+  ],
+  "standard_deduction": {
+    "single_dependent": 3100,
+    "single": 8000,
+    "married_filing_jointly": 16050,
+    "married_filing_separately": 8000,
+    "head_of_household": 11200,
+    "qualifying_surviving_spouse": 16050,
+    "source": "New York 2025 Form IT-201-I instructions, standard deduction table"
+  },
+  "dependent_exemption": {
+    "amount_per_dependent": 1000,
+    "source": "New York 2025 Form IT-201-I instructions, line 36"
+  },
+  "itemized_deductions": {
+    "can_itemize_even_if_federal_standard_deduction": true,
+    "state_local_tax_note": "For New York purposes, state and local taxes paid in 2025 are not subject to the federal limit described in the 2025 NY itemized deduction guidance.",
+    "college_tuition_note": "New York college tuition may be reviewed as a credit or itemized deduction; compare under New York instructions.",
+    "source": "New York Tax Department 2025 itemized deductions guidance and Form IT-201-I"
   },
   "state_tax_brackets": {
-    "status": "placeholder",
-    "todo": "TODO: Add verified New York 2025 tax brackets. Do not use placeholder data for calculations."
+    "status": "available_by_form_instructions",
+    "note": "Use New York 2025 resident/nonresident instructions and tax tables for exact computations. TaxMax agents should not compute final NY tax from this lightweight context."
   },
   "credits": {
-    "status": "placeholder",
-    "todo": "TODO: Add reviewed New York credit metadata only after source validation."
-  },
-  "deductions": {
-    "status": "placeholder",
-    "todo": "TODO: Add reviewed New York deduction metadata only after source validation."
+    "college_tuition": {
+      "status": "review_required",
+      "note": "Review whether the college tuition credit or itemized deduction may be more beneficial when education expenses are present."
+    }
   },
   "notes": [
-    "Placeholder state rule file for agent context only.",
-    "No detailed brackets or eligibility determinations are encoded yet."
+    "New York may allow itemized deductions even if the federal return uses the standard deduction.",
+    "State context is for opportunity review only, not final state tax computation."
   ]
 }

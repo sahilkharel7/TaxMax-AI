@@ -15,11 +15,17 @@ from app.schemas import (
     DocumentInput,
     HealthResponse,
     TaxAnalysisResponse,
+    TaxOptimizationResponse,
     TaxScenarioRequest,
 )
 from app.services.analysis_service import analyze_scenario
 from app.services.chat_service import generate_chat_reply
+from app.services.tax_optimization_service import optimize_tax_scenario
 from app.services.tax_rule_service import get_tax_rule_context_dict
+
+
+ALLOWED_DOCUMENT_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
+MAX_DOCUMENT_SIZE_BYTES = 25 * 1024 * 1024
 
 
 def create_app() -> FastAPI:
@@ -63,6 +69,16 @@ def create_app() -> FastAPI:
                 detail="Tax analysis could not be completed safely.",
             ) from exc
 
+    @app.post("/api/tax/optimize", response_model=TaxOptimizationResponse)
+    def optimize(request: TaxScenarioRequest) -> TaxOptimizationResponse:
+        try:
+            return optimize_tax_scenario(request)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail="Tax savings review could not be completed safely.",
+            ) from exc
+
     @app.post("/api/chat", response_model=ChatResponse)
     def chat(request: ChatRequest) -> ChatResponse:
         try:
@@ -88,12 +104,29 @@ def create_app() -> FastAPI:
     @app.post("/api/documents/extract", response_model=DocumentExtractionResponse)
     def extract_document(document: DocumentInput) -> DocumentExtractionResponse:
         try:
+            file_name = document.file_name or ""
+            extension = os.path.splitext(file_name.lower())[1]
+            if file_name and extension not in ALLOWED_DOCUMENT_EXTENSIONS:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Unsupported document type. Upload PDF, JPG, JPEG, or PNG files only.",
+                )
+            if (
+                document.file_size_bytes is not None
+                and document.file_size_bytes > MAX_DOCUMENT_SIZE_BYTES
+            ):
+                raise HTTPException(
+                    status_code=413,
+                    detail="Document is larger than the 25 MB prototype upload limit.",
+                )
             safe_document = DocumentInput(
                 document_id=document.document_id,
                 document_type=document.document_type,
                 file_name=document.file_name,
                 extraction_status="needs_review",
                 extracted_fields=None,
+                confirmed_fields=None,
+                file_size_bytes=document.file_size_bytes,
                 notes=None,
             )
             return DocumentExtractionResponse(
@@ -113,6 +146,8 @@ def create_app() -> FastAPI:
                 ],
                 missing_information=["Confirmed document fields"],
             )
+        except HTTPException:
+            raise
         except Exception as exc:
             raise HTTPException(
                 status_code=500,

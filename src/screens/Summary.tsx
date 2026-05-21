@@ -10,9 +10,10 @@ import { Button } from "../components/ui/Button";
 import { Card, SectionHeader } from "../components/ui/Card";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { useTaxAnalysis } from "../hooks/useTaxAnalysis";
+import { useTaxOptimization } from "../hooks/useTaxOptimization";
 import { buildScenarioRequest } from "../lib/scenarioMapping";
 import { isBackendEnabled } from "../lib/api";
-import type { AgentWarningBody } from "../lib/apiTypes";
+import type { AgentWarningBody, TaxSavingsOpportunityBody } from "../lib/apiTypes";
 
 interface SummaryProps {
   w2: W2Review | null;
@@ -107,6 +108,19 @@ export function Summary({
         userGoal: "Summarize what is missing or needs review.",
       }),
   });
+  const optimization = useTaxOptimization({
+    cacheKey: scenarioCacheKey,
+    buildScenario: () =>
+      buildScenarioRequest({
+        profile,
+        manual,
+        w2,
+        t1098,
+        documents,
+        taxYear,
+        userGoal: "Find potential legal tax-saving opportunities before filing.",
+      }),
+  });
   const backendMode = isBackendEnabled();
 
   return (
@@ -167,6 +181,8 @@ export function Summary({
 
       <AgentInsightsCard analysis={analysis} backendMode={backendMode} />
 
+      <SavingsOpportunitiesCard optimization={optimization} />
+
       <div className="rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-xs text-amber-900">
         TaxMax AI provides AI-assisted preparation support. It does not provide
         legal or tax advice. Numbers shown are estimates for prototype purposes.
@@ -178,6 +194,134 @@ export function Summary({
         </Button>
         <Button onClick={onContinue}>Go to final review</Button>
       </div>
+    </div>
+  );
+}
+
+function SavingsOpportunitiesCard({
+  optimization,
+}: {
+  optimization: ReturnType<typeof useTaxOptimization>;
+}) {
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">
+            Tax savings opportunities
+          </h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Legal deduction, credit, filing status, state, and documentation review areas.
+          </p>
+        </div>
+        <StatusBadge tone={toneForOptimization(optimization)}>
+          {labelForOptimization(optimization)}
+        </StatusBadge>
+      </div>
+
+      {optimization.status === "loading" ? (
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+          Looking for potential legal tax-saving review areas...
+        </div>
+      ) : null}
+
+      {optimization.status === "error" ? (
+        <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
+          The savings review service could not be reached. You can still continue with the basic summary.
+        </div>
+      ) : null}
+
+      {optimization.status === "success" ? (
+        <div className="mt-4 space-y-3">
+          <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+            {optimization.data.review_package_summary}
+          </p>
+          {optimization.data.opportunities.slice(0, 4).map((opportunity) => (
+            <OpportunityCard
+              key={opportunity.opportunity_id}
+              opportunity={opportunity}
+            />
+          ))}
+          {optimization.data.missing_information.length > 0 ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-amber-800">
+                Needed for better review
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {optimization.data.missing_information.map((item) => (
+                  <span
+                    key={item}
+                    className="rounded-full bg-white px-2.5 py-1 text-xs text-amber-900 ring-1 ring-amber-200"
+                  >
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </Card>
+  );
+}
+
+function OpportunityCard({
+  opportunity,
+}: {
+  opportunity: TaxSavingsOpportunityBody;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            {opportunity.agent_name} · {opportunity.category.replace(/_/g, " ")}
+          </p>
+          <h4 className="mt-1 text-sm font-semibold text-slate-900">
+            {opportunity.title}
+          </h4>
+        </div>
+        <div className="flex gap-2">
+          <StatusBadge tone={toneForImpact(opportunity.potential_impact)}>
+            {opportunity.potential_impact} impact
+          </StatusBadge>
+          <StatusBadge tone={toneForRisk(opportunity.risk_level)}>
+            {opportunity.risk_level} risk
+          </StatusBadge>
+        </div>
+      </div>
+      <p className="mt-3 text-sm text-slate-700">{opportunity.summary}</p>
+      {opportunity.estimated_directional_effect ? (
+        <p className="mt-2 text-xs text-slate-500">
+          Direction: {opportunity.estimated_directional_effect}
+        </p>
+      ) : null}
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <MiniList title="Facts to confirm" items={opportunity.required_facts} />
+        <MiniList title="Documents" items={opportunity.required_documents} />
+      </div>
+      <p className="mt-3 text-xs text-slate-500">
+        Next: {opportunity.suggested_next_step}
+      </p>
+    </div>
+  );
+}
+
+function MiniList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+        {title}
+      </p>
+      {items.length > 0 ? (
+        <ul className="mt-2 space-y-1 text-xs text-slate-600">
+          {items.slice(0, 3).map((item) => (
+            <li key={item}>- {item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-xs text-slate-400">None listed</p>
+      )}
     </div>
   );
 }
@@ -403,6 +547,60 @@ function labelForAnalysis(
     default:
       return "—";
   }
+}
+
+function toneForOptimization(
+  optimization: ReturnType<typeof useTaxOptimization>,
+): "info" | "neutral" | "complete" | "missing" | "review" {
+  if (optimization.status !== "success") return "neutral";
+  switch (optimization.data.status) {
+    case "needs_more_information":
+      return "missing";
+    case "review_required":
+      return "review";
+    case "draft":
+      return "complete";
+    default:
+      return "neutral";
+  }
+}
+
+function labelForOptimization(
+  optimization: ReturnType<typeof useTaxOptimization>,
+): string {
+  if (optimization.status === "loading") return "Scanning...";
+  if (optimization.status === "error") return "Offline";
+  if (optimization.status === "idle") return "Idle";
+  switch (optimization.data.status) {
+    case "needs_more_information":
+      return "More info needed";
+    case "review_required":
+      return "Review found";
+    case "draft":
+      return "Ready";
+    case "error":
+      return "Error";
+    default:
+      return "-";
+  }
+}
+
+function toneForImpact(
+  impact: TaxSavingsOpportunityBody["potential_impact"],
+): "info" | "neutral" | "complete" | "missing" | "review" {
+  if (impact === "high") return "complete";
+  if (impact === "medium") return "info";
+  if (impact === "low") return "neutral";
+  return "review";
+}
+
+function toneForRisk(
+  risk: TaxSavingsOpportunityBody["risk_level"],
+): "info" | "neutral" | "complete" | "missing" | "review" {
+  if (risk === "high") return "missing";
+  if (risk === "medium") return "review";
+  if (risk === "low") return "complete";
+  return "neutral";
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

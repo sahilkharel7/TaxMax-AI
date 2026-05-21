@@ -5,13 +5,15 @@
 
 TaxMax AI walks a user through a clean, guided tax prep flow: upload a W-2 or
 1098-T, review the extracted fields, answer a few profile questions, and see an
-estimated summary — with a contextual chatbot sidebar available the whole way.
-A FastAPI backend (`backend/`) provides chat, scenario analysis, and tax-rule
-lookup endpoints; the frontend talks to it through a Vite proxy in development.
+estimated summary plus legal tax-saving review opportunities — with a
+contextual chatbot sidebar available the whole way. A FastAPI backend
+(`backend/`) provides chat, scenario analysis, savings optimization, document
+extraction validation, and tax-rule lookup endpoints; the frontend talks to it
+through a Vite proxy in development.
 
 > **Prototype only.** Document parsing is mocked, summary numbers are
-> illustrative, the AI agent layer is a deterministic placeholder until Gemini
-> integration lands, and there is no e-filing.
+> illustrative, savings opportunities are review prompts rather than final tax
+> advice, and there is no e-filing.
 
 ## Stack
 
@@ -91,14 +93,36 @@ pytest -q          # run backend tests (from backend/ with venv active)
 | GET | `/api/health` | Service health check |
 | POST | `/api/chat` | Chatbot reply with optional scenario context |
 | POST | `/api/tax/analyze` | Structured agent-style review of a tax scenario |
+| POST | `/api/tax/optimize` | Structured legal tax-saving opportunity review |
 | GET | `/api/tax/rules?tax_year=YYYY&state_code=XX` | Federal + optional state rule context |
+| POST | `/api/documents/extract` | Validates upload metadata and returns mocked extraction output |
 
 Schemas are defined in `backend/app/schemas.py` and mirrored in
-`src/lib/apiTypes.ts`. The current chat and analyze handlers are
-deterministic placeholders that produce schema-valid responses; replace
-`backend/app/services/chat_service.py` and
-`backend/app/services/analysis_service.py` with the Gemini-backed agent
-orchestrator when it lands.
+`src/lib/apiTypes.ts`.
+
+## Backend capability statement
+
+The backend supports a savings-focused review workflow for deductions, credits,
+filing status, state context, documentation gaps, and professional-review
+checklists. It uses deterministic agents by default and includes a shared
+Gemini structured-output contract for safe future agent calls when
+`GEMINI_API_KEY` is configured. The app must not be presented as calculating a
+final refund, guaranteeing savings, filing a return, or giving tax/legal advice.
+
+## Deployment mode
+
+`vercel.json` currently deploys the Vite frontend as a static app from `dist`.
+That mode does not deploy the FastAPI backend. To use backend-supported
+analysis, optimization, and chat in production, deploy the backend separately
+and set:
+
+```
+VITE_USE_BACKEND=true
+VITE_API_BASE_URL=https://your-backend.example.com/api
+```
+
+Keep `GEMINI_API_KEY` only in the backend environment. Do not expose provider
+keys through Vite variables or frontend code.
 
 ## App structure
 
@@ -113,6 +137,7 @@ src/
   hooks/
     useBackendHealth.ts   # Polls /api/health for the header status pill
     useTaxAnalysis.ts     # Calls /api/tax/analyze with scenario state
+    useTaxOptimization.ts # Calls /api/tax/optimize with scenario state
   lib/
     api.ts                # Typed fetch wrappers + ApiError
     apiTypes.ts           # Wire-format types matching backend Pydantic schemas
@@ -139,7 +164,9 @@ backend/
     services/
       chat_service.py     # Deterministic chat replies (placeholder)
       analysis_service.py # Deterministic scenario analysis (placeholder)
+      gemini_agent_contracts.py # Shared structured-output contract for agents
       tax_rule_service.py # Loads federal/state JSON rule files
+      tax_optimization_service.py # Savings-opportunity review workflow
     tax_rules/
       federal/2025.json
       states/CA/2025.json
@@ -154,7 +181,7 @@ backend/
 3. **Manual entry** *(manual path)* — personal info, filing status, income, education, credits
 4. **Parsed review** — confirm each extracted field with edit + confirm
 5. **Tax profile** — filing status and yes/no questions
-6. **Summary** — estimated refund / amount owed plus agent insights from the backend
+6. **Summary** — estimated refund / amount owed, agent insights, and savings opportunities
 7. **Final review** — section-by-section status + local and backend warnings, prepare review package
 
 A **TaxMax Guide** chatbot sidebar is available throughout the flow. It posts
@@ -178,6 +205,8 @@ to the local mock replies and shows a small offline notice.
 - Document parsing may contain errors. Always review and confirm your
   information.
 - E-filing is not available in this prototype.
+- Savings opportunities are prompts for review and documentation, not final
+  eligibility decisions or guaranteed tax outcomes.
 
 ## License
 

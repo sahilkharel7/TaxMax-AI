@@ -4,27 +4,152 @@
   "tax_year": 2025,
   "last_reviewed": "2026-05-21",
   "source_references": [
-    "IRS.gov federal tax forms and publications landing pages",
-    "IRS.gov tax year 2025 updates and guidance, pending final backend rule review"
+    "https://www.irs.gov/irb/2024-45_IRB",
+    "https://www.irs.gov/credits-deductions/individuals/earned-income-tax-credit/earned-income-and-earned-income-tax-credit-eitc-tables",
+    "https://www.irs.gov/publications/p590a",
+    "https://www.irs.gov/publications/p969",
+    "https://www.irs.gov/pub/irs-prior/i8863--2025.pdf",
+    "https://www.irs.gov/pub/irs-drop/n-24-80.pdf"
+  ],
+  "filing_statuses": [
+    "single",
+    "married_filing_jointly",
+    "married_filing_separately",
+    "head_of_household",
+    "qualifying_surviving_spouse"
   ],
   "standard_deduction": {
-    "status": "placeholder",
-    "todo": "TODO: Add verified 2025 standard deduction values from authoritative IRS sources before using this in analysis."
+    "single": 15000,
+    "married_filing_jointly": 30000,
+    "married_filing_separately": 15000,
+    "head_of_household": 22500,
+    "qualifying_surviving_spouse": 30000,
+    "dependent_minimum": 1350,
+    "dependent_earned_income_addition": 450,
+    "additional_aged_or_blind": 1600,
+    "additional_aged_or_blind_unmarried": 2000,
+    "source": "IRS Internal Revenue Bulletin 2024-45, Rev. Proc. 2024-40, section 2.15"
   },
   "tax_brackets": {
-    "status": "placeholder",
-    "todo": "TODO: Add verified 2025 federal tax brackets. Do not use placeholder data for calculations."
-  },
-  "credits": {
-    "status": "placeholder",
-    "todo": "TODO: Add reviewed credit metadata only after source validation."
+    "single": [
+      { "rate": 0.1, "over": 0, "not_over": 11925 },
+      { "rate": 0.12, "over": 11925, "not_over": 48475 },
+      { "rate": 0.22, "over": 48475, "not_over": 103350 },
+      { "rate": 0.24, "over": 103350, "not_over": 197300 },
+      { "rate": 0.32, "over": 197300, "not_over": 250525 },
+      { "rate": 0.35, "over": 250525, "not_over": 626350 },
+      { "rate": 0.37, "over": 626350, "not_over": null }
+    ],
+    "married_filing_jointly": [
+      { "rate": 0.1, "over": 0, "not_over": 23850 },
+      { "rate": 0.12, "over": 23850, "not_over": 96950 },
+      { "rate": 0.22, "over": 96950, "not_over": 206700 },
+      { "rate": 0.24, "over": 206700, "not_over": 394600 },
+      { "rate": 0.32, "over": 394600, "not_over": 501050 },
+      { "rate": 0.35, "over": 501050, "not_over": 751600 },
+      { "rate": 0.37, "over": 751600, "not_over": null }
+    ],
+    "married_filing_separately": [
+      { "rate": 0.1, "over": 0, "not_over": 11925 },
+      { "rate": 0.12, "over": 11925, "not_over": 48475 },
+      { "rate": 0.22, "over": 48475, "not_over": 103350 },
+      { "rate": 0.24, "over": 103350, "not_over": 197300 },
+      { "rate": 0.32, "over": 197300, "not_over": 250525 },
+      { "rate": 0.35, "over": 250525, "not_over": 375800 },
+      { "rate": 0.37, "over": 375800, "not_over": null }
+    ],
+    "head_of_household": [
+      { "rate": 0.1, "over": 0, "not_over": 17000 },
+      { "rate": 0.12, "over": 17000, "not_over": 64850 },
+      { "rate": 0.22, "over": 64850, "not_over": 103350 },
+      { "rate": 0.24, "over": 103350, "not_over": 197300 },
+      { "rate": 0.32, "over": 197300, "not_over": 250500 },
+      { "rate": 0.35, "over": 250500, "not_over": 626350 },
+      { "rate": 0.37, "over": 626350, "not_over": null }
+    ],
+    "qualifying_surviving_spouse": [
+      { "rate": 0.1, "over": 0, "not_over": 23850 },
+      { "rate": 0.12, "over": 23850, "not_over": 96950 },
+      { "rate": 0.22, "over": 96950, "not_over": 206700 },
+      { "rate": 0.24, "over": 206700, "not_over": 394600 },
+      { "rate": 0.32, "over": 394600, "not_over": 501050 },
+      { "rate": 0.35, "over": 501050, "not_over": 751600 },
+      { "rate": 0.37, "over": 751600, "not_over": null }
+    ],
+    "source": "IRS Internal Revenue Bulletin 2024-45, Rev. Proc. 2024-40, section 3.01"
   },
   "deductions": {
-    "status": "placeholder",
-    "todo": "TODO: Add reviewed deduction metadata only after source validation."
+    "student_loan_interest": {
+      "maximum": 2500,
+      "phaseout_single_head_of_household_qualifying_surviving_spouse": {
+        "begins": 85000,
+        "ends": 100000
+      },
+      "phaseout_married_filing_jointly": {
+        "begins": 170000,
+        "ends": 200000
+      },
+      "source": "IRS Internal Revenue Bulletin 2024-45, Rev. Proc. 2024-40, section 2.30"
+    },
+    "educator_expenses": {
+      "maximum": 300,
+      "source": "IRS Internal Revenue Bulletin 2024-45, Rev. Proc. 2024-40, section 2.13"
+    },
+    "medical_itemized_floor_percent_of_agi": 7.5,
+    "salt_itemized_cap": {
+      "status": "review_required",
+      "note": "Federal SALT cap changed for tax year 2025 under post-2024 legislation. Keep agent wording cautious and verify before numeric advice."
+    }
+  },
+  "credits": {
+    "earned_income_tax_credit": {
+      "investment_income_limit": 11950,
+      "maximum_credit": {
+        "zero_qualifying_children": 649,
+        "one_qualifying_child": 4328,
+        "two_qualifying_children": 7152,
+        "three_or_more_qualifying_children": 8046
+      },
+      "agi_limits": {
+        "single_head_of_household_married_filing_separately_qualifying_surviving_spouse": {
+          "zero": 19104,
+          "one": 50434,
+          "two": 57310,
+          "three_or_more": 61555
+        },
+        "married_filing_jointly": {
+          "zero": 26214,
+          "one": 57554,
+          "two": 64430,
+          "three_or_more": 68675
+        }
+      },
+      "source": "IRS Earned income and EITC tables, tax year 2025"
+    },
+    "education_credits": {
+      "american_opportunity_credit_maximum": 2500,
+      "american_opportunity_refundable_percent": 40,
+      "lifetime_learning_credit_maximum": 2000,
+      "magi_limit_single_head_of_household_qualifying_surviving_spouse": 90000,
+      "magi_limit_married_filing_jointly": 180000,
+      "source": "IRS 2025 Instructions for Form 8863"
+    }
+  },
+  "retirement": {
+    "ira_contribution_limit": 7000,
+    "ira_catch_up_age_50_or_older": 1000,
+    "employee_401k_403b_457_tsp_limit": 23500,
+    "general_catch_up_50_or_older": 7500,
+    "source": "IRS Publication 590-A (2025) and IRS Notice 2024-80"
+  },
+  "hsa": {
+    "self_only_contribution_limit": 4300,
+    "family_contribution_limit": 8550,
+    "source": "IRS Publication 969 (2025)"
   },
   "notes": [
-    "Placeholder rule file for agent context only.",
-    "No detailed brackets or eligibility determinations are encoded yet."
+    "Rule context is for legal opportunity review only.",
+    "Agents must not calculate final tax liability or final refund amounts.",
+    "Agents must verify eligibility facts and documentation before any user-facing recommendation."
   ]
 }
