@@ -532,3 +532,33 @@ class ChatResponse(BaseModel):
             }
         }
     )
+
+
+class DocumentExtractionResponse(BaseModel):
+    """Safe response for document extraction requests."""
+
+    status: ResponseStatus = Field(
+        description="Current status of the document extraction request.",
+    )
+    message: str = Field(
+        description="User-facing message describing extraction availability.",
+    )
+    document: Optional[DocumentInput] = Field(
+        default=None,
+        description="Document metadata received by the backend, if supplied.",
+    )
+    warnings: list[AgentWarning] = Field(
+        default_factory=list,
+        description="Warnings explaining why extraction is not yet available.",
+    )
+    missing_information: list[str] = Field(
+        default_factory=list,
+        description="Information needed before a future extraction workflow can run.",
+    )
+    disclaimer: str = Field(
+        default=(
+            "TaxMax AI document extraction is not available yet. Do not rely on this "
+            "stub for filing-ready tax document data."
+        ),
+        description="Required user-facing disclaimer for the extraction stub.",
+    )
