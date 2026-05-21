@@ -49,13 +49,22 @@ def create_app() -> FastAPI:
     @app.get("/api/health", response_model=HealthResponse)
     def health_check() -> HealthResponse:
         live_settings = get_settings()
+        openai_key = (os.getenv("OPENAI_API_KEY") or live_settings.openai_api_key or "").strip()
         gemini_key = (os.getenv("GEMINI_API_KEY") or live_settings.gemini_api_key or "").strip()
+
+        if openai_key:
+            provider = "openai"
+            model = live_settings.openai_model
+        else:
+            provider = "gemini"
+            model = live_settings.gemini_model
+
         return HealthResponse(
             status="ok",
             service=live_settings.app_name,
             ok=True,
-            provider="gemini",
-            model=live_settings.gemini_model,
+            provider=provider,
+            model=model,
             geminiConfigured=bool(gemini_key),
         )
 

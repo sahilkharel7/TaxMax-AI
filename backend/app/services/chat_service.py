@@ -1,16 +1,27 @@
-"""Chat reply service.
+"""Conversational chat service for TaxMax Guide.
 
-This is a deterministic placeholder so the frontend can integrate with the
-backend before the Gemini-powered agent workflow is wired in. Swap this
-implementation with the real agent orchestrator when it is ready; the public
-`generate_chat_reply` signature is intentionally stable.
+This service is the primary entry point for the ``/api/chat`` endpoint. It
+
+1. Tracks short-lived conversation history per ``session_id`` in memory.
+2. Calls OpenAI's Chat Completions API when ``OPENAI_API_KEY`` is configured.
+3. Falls back to a deterministic, safety-reviewed reply table when OpenAI is
+   unavailable (no key, network error, empty completion, etc.).
+
+The structured response surface (``status``, ``warnings``,
+``missing_information``, ``next_questions``) is still derived from the supplied
+scenario context, regardless of which backend produced the natural language
+answer. That keeps the frontend's chat UI deterministic and gives the LLM the
+same scaffolding to lean on.
 """
 
 from __future__ import annotations
 
+import json
 import re
+import threading
+from collections import deque
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Deque, Optional
 
 from app.schemas import (
     AgentWarning,
@@ -20,7 +31,222 @@ from app.schemas import (
     TaxSavingsOpportunity,
     TaxScenarioRequest,
 )
+from app.services.openai_client import (
+    OpenAIChatError,
+    OpenAINotConfiguredError,
+    generate_chat_completion,
+    is_openai_configured,
+)
 from app.services.tax_optimization_service import optimize_tax_scenario
+
+
+# --- Conversation memory ----------------------------------------------------
+
+# Cap on how many prior turns (user+assistant messages) we replay to the LLM.
+# 12 messages = roughly 6 full back-and-forth exchanges, which is enough to
+# maintain context without exploding token usage.
+_MAX_HISTORY_MESSAGES = 12
+
+# Hard cap on the number of sessions we keep in memory so a long-running
+# process can't grow without bound.
+_MAX_TRACKED_SESSIONS = 256
+
+_session_lock = threading.Lock()
+_session_history: dict[str, Deque[dict[str, str]]] = {}
+
+
+# --- System prompt ----------------------------------------------------------
+
+_SYSTEM_PROMPT = (
+    "You are TaxMax Guide, the in-app assistant for TaxMax AI, a U.S. tax "
+    "preparation prototype. Be warm, conversational, and concise (2-5 short "
+    "sentences unless the user asks for detail). Use plain language and "
+    "remember earlier turns in the same conversation.\n\n"
+    "Scope and guardrails (these are firm):\n"
+    "- You help users understand tax concepts (W-2, 1098-T, 1099 forms, "
+    "  filing statuses, common credits and deductions), explain what each "
+    "  step of the TaxMax flow does, and review information the user has "
+    "  already provided.\n"
+    "- You do NOT file returns. TaxMax AI cannot e-file or submit to the IRS "
+    "  or any state. If a user asks you to file, say so clearly and suggest "
+    "  an authorized preparer or e-file provider.\n"
+    "- You do NOT promise exact refund amounts, exact tax owed, or final "
+    "  eligibility for any credit or deduction. Numbers in the app are "
+    "  estimates only.\n"
+    "- You do NOT provide legal, tax, or financial advice. For situation-"
+    "  specific questions, recommend confirming with a qualified tax "
+    "  professional.\n"
+    "- Never claim a user 'qualifies', 'is entitled to', or 'will receive' "
+    "  anything. Prefer phrasing like 'may be eligible', 'commonly applies "
+    "  when...', or 'a professional can confirm.'\n"
+    "- If the user shares sensitive identifiers (SSN, full account numbers), "
+    "  do not repeat them back. Acknowledge them generically.\n\n"
+    "Style:\n"
+    "- Friendly, calm, and direct. No emojis. No markdown headings.\n"
+    "- When the user is mid-flow, gently point to the relevant TaxMax step "
+    "  (Upload, Manual entry, Parsed review, Tax profile, Summary, Final "
+    "  review) when helpful.\n"
+    "- If the user's question is ambiguous, ask one clarifying question "
+    "  rather than guessing."
+)
+
+
+# --- Public API -------------------------------------------------------------
+
+
+def generate_chat_reply(request: ChatRequest) -> ChatResponse:
+    """Generate a chat response, using optimization routing when appropriate.
+
+    The structured signals (``status``, ``warnings``, ``missing_information``,
+    ``next_questions``) come from the supplied scenario context. Savings-focused
+    questions with scenario context use the optimization service and expose
+    related opportunities; other answers are produced by OpenAI when available,
+    and otherwise by the deterministic fallback table.
+    """
+
+    status, warnings, missing = _scenario_signals(request.scenario)
+    next_questions = _next_questions(request.scenario)
+    related_opportunities: list[TaxSavingsOpportunity] = []
+
+    if request.scenario is not None and _is_savings_intent(request.message):
+        optimization = optimize_tax_scenario(request.scenario)
+        related_opportunities = optimization.opportunities[:3]
+        answer = _optimization_answer(related_opportunities)
+    else:
+        answer, used_fallback = _generate_answer(request)
+        if used_fallback and status == "draft" and not warnings and not missing:
+            # No scenario context and no LLM -- keep status at "draft" which is
+            # already the safe default for the deterministic placeholder.
+            pass
+
+    return ChatResponse(
+        status=status,
+        answer=answer,
+        next_questions=next_questions,
+        warnings=warnings,
+        related_opportunities=related_opportunities,
+        missing_information=missing,
+    )
+
+
+# --- Answer generation ------------------------------------------------------
+
+
+def _generate_answer(request: ChatRequest) -> tuple[str, bool]:
+    """Return ``(answer, used_fallback)`` for the given chat request."""
+
+    if not is_openai_configured():
+        return _fallback_reply(request.message), True
+
+    session_id = (request.session_id or "").strip() or None
+    history = _get_history_snapshot(session_id)
+
+    messages: list[dict[str, str]] = [{"role": "system", "content": _SYSTEM_PROMPT}]
+    scenario_context = _scenario_system_message(request.scenario)
+    if scenario_context is not None:
+        messages.append(scenario_context)
+    messages.extend(history)
+    messages.append({"role": "user", "content": request.message})
+
+    try:
+        answer = generate_chat_completion(messages)
+    except (OpenAINotConfiguredError, OpenAIChatError):
+        return _fallback_reply(request.message), True
+
+    if session_id is not None:
+        _record_turn(session_id, user_message=request.message, assistant_message=answer)
+
+    return answer, False
+
+
+def _scenario_system_message(
+    scenario: Optional[TaxScenarioRequest],
+) -> Optional[dict[str, str]]:
+    """Render the current tax scenario as a compact system message."""
+
+    if scenario is None:
+        return None
+
+    try:
+        payload: dict[str, Any] = scenario.model_dump(
+            mode="json", exclude_none=True, by_alias=False
+        )
+    except Exception:  # noqa: BLE001 -- never let serialization kill chat
+        return None
+
+    if not payload:
+        return None
+
+    return {
+        "role": "system",
+        "content": (
+            "Current TaxMax scenario context (JSON, fields the user has "
+            "entered so far). Treat unknown fields as 'not provided yet' "
+            "rather than assuming a value:\n"
+            + json.dumps(payload, default=str)
+        ),
+    }
+
+
+# --- Conversation memory ----------------------------------------------------
+
+
+def _get_history_snapshot(session_id: Optional[str]) -> list[dict[str, str]]:
+    if session_id is None:
+        return []
+
+    with _session_lock:
+        history = _session_history.get(session_id)
+        if history is None:
+            return []
+        return list(history)
+
+
+def _record_turn(
+    session_id: str,
+    *,
+    user_message: str,
+    assistant_message: str,
+) -> None:
+    with _session_lock:
+        history = _session_history.get(session_id)
+        if history is None:
+            _evict_if_needed_locked()
+            history = deque(maxlen=_MAX_HISTORY_MESSAGES)
+            _session_history[session_id] = history
+
+        history.append({"role": "user", "content": user_message})
+        history.append({"role": "assistant", "content": assistant_message})
+
+
+def _evict_if_needed_locked() -> None:
+    """Drop the oldest session if we're at capacity. Caller holds the lock."""
+
+    if len(_session_history) < _MAX_TRACKED_SESSIONS:
+        return
+    oldest_key = next(iter(_session_history))
+    _session_history.pop(oldest_key, None)
+
+
+def reset_session(session_id: str) -> None:
+    """Public helper -- mainly for tests -- to clear a single session."""
+
+    with _session_lock:
+        _session_history.pop(session_id, None)
+
+
+def reset_all_sessions() -> None:
+    """Public helper -- mainly for tests -- to clear all sessions."""
+
+    with _session_lock:
+        _session_history.clear()
+
+
+# --- Deterministic fallback -------------------------------------------------
+#
+# These rules existed before the OpenAI integration and remain the canonical
+# safe placeholder when no LLM is available. They are also exercised directly
+# by the QA test suite (`tests/test_chat_endpoint.py`).
 
 
 @dataclass(frozen=True)
@@ -124,7 +350,10 @@ _REPLY_RULES: tuple[_ReplyRule, ...] = (
         ),
     ),
     _ReplyRule(
-        re.compile(r"filing status|single|married|head of household|qss|hoh|mfj|mfs", re.IGNORECASE),
+        re.compile(
+            r"filing status|single|married|head of household|qss|hoh|mfj|mfs",
+            re.IGNORECASE,
+        ),
         (
             "Filing status is one of single, married filing jointly, married "
             "filing separately, head of household, or qualifying surviving "
@@ -135,6 +364,7 @@ _REPLY_RULES: tuple[_ReplyRule, ...] = (
     ),
 )
 
+
 _DEFAULT_REPLY = (
     "I can explain tax terms and walk you through this app step by step. "
     "Try asking about W-2s, 1098-Ts, filing status, or how the review step "
@@ -143,36 +373,7 @@ _DEFAULT_REPLY = (
 )
 
 
-def generate_chat_reply(request: ChatRequest) -> ChatResponse:
-    """Return a deterministic, schema-valid chat response.
-
-    The reply text is a placeholder until the Gemini-backed agent workflow
-    replaces this implementation. Status, warnings, and missing information
-    fields are still derived from the supplied scenario context so the
-    frontend can render its full chat UI today.
-    """
-
-    related_opportunities: list[TaxSavingsOpportunity] = []
-    if request.scenario is not None and _is_savings_intent(request.message):
-        optimization = optimize_tax_scenario(request.scenario)
-        related_opportunities = optimization.opportunities[:3]
-        answer = _optimization_answer(related_opportunities)
-    else:
-        answer = _match_reply(request.message)
-    status, warnings, missing = _scenario_signals(request.scenario)
-    next_questions = _next_questions(request.scenario)
-
-    return ChatResponse(
-        status=status,
-        answer=answer,
-        next_questions=next_questions,
-        warnings=warnings,
-        related_opportunities=related_opportunities,
-        missing_information=missing,
-    )
-
-
-def _match_reply(message: str) -> str:
+def _fallback_reply(message: str) -> str:
     for rule in _REPLY_RULES:
         if rule.pattern.search(message):
             return rule.answer
@@ -202,6 +403,9 @@ def _optimization_answer(opportunities: list[TaxSavingsOpportunity]) -> str:
         f"{top.summary} This is not a final eligibility decision. "
         f"Next step: {top.suggested_next_step}"
     )
+
+
+# --- Scenario-derived structured signals ------------------------------------
 
 
 def _scenario_signals(
