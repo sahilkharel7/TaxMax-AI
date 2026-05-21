@@ -22,6 +22,7 @@ from app.schemas import (
     TaxScenarioRequest,
     TaxpayerProfile,
 )
+from app.services.agent_orchestrator import analyze_tax_scenario
 from app.services.tax_rule_service import (
     TaxRuleContext,
     TaxRuleError,
@@ -44,6 +45,17 @@ def analyze_scenario(request: TaxScenarioRequest) -> TaxAnalysisResponse:
     )
     _document_signals(request, findings, warnings)
     _rule_context_signals(request.profile, findings, warnings)
+
+    orchestrated = analyze_tax_scenario(request)
+    findings.extend(orchestrated.findings)
+    warnings.extend(orchestrated.warnings)
+    next_questions.extend(orchestrated.next_questions)
+    missing.extend(orchestrated.missing_information)
+
+    findings = _dedupe_findings(findings)
+    warnings = _dedupe_warnings(warnings)
+    next_questions = _dedupe_strings(next_questions)
+    missing = _dedupe_strings(missing)
 
     if missing or any(w.severity == "high" for w in warnings):
         status: ResponseStatus = "needs_more_information"
@@ -279,3 +291,38 @@ def _rule_context_signals(
             ),
         )
     )
+
+
+def _dedupe_findings(findings: list[AgentFinding]) -> list[AgentFinding]:
+    deduped: list[AgentFinding] = []
+    seen: set[tuple[str, str, str]] = set()
+    for finding in findings:
+        key = (finding.agent_name, finding.category, finding.summary)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(finding)
+    return deduped
+
+
+def _dedupe_warnings(warnings: list[AgentWarning]) -> list[AgentWarning]:
+    deduped: list[AgentWarning] = []
+    seen: set[tuple[str, str]] = set()
+    for warning in warnings:
+        key = (warning.code, warning.message)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(warning)
+    return deduped
+
+
+def _dedupe_strings(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
+    return deduped

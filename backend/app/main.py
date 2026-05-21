@@ -1,12 +1,17 @@
+from __future__ import annotations
+
 from typing import Optional
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.schemas import (
+    AgentWarning,
     ChatRequest,
     ChatResponse,
+    DocumentExtractionResponse,
+    DocumentInput,
     HealthResponse,
     TaxAnalysisResponse,
     TaxScenarioRequest,
@@ -38,13 +43,25 @@ def create_app() -> FastAPI:
     def health_check() -> HealthResponse:
         return HealthResponse(status="ok", service=settings.app_name)
 
-    @app.post("/api/chat", response_model=ChatResponse)
-    def chat(request: ChatRequest) -> ChatResponse:
-        return generate_chat_reply(request)
-
     @app.post("/api/tax/analyze", response_model=TaxAnalysisResponse)
     def analyze(request: TaxScenarioRequest) -> TaxAnalysisResponse:
-        return analyze_scenario(request)
+        try:
+            return analyze_scenario(request)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail="Tax analysis could not be completed safely.",
+            ) from exc
+
+    @app.post("/api/chat", response_model=ChatResponse)
+    def chat(request: ChatRequest) -> ChatResponse:
+        try:
+            return generate_chat_reply(request)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail="Chat response could not be generated safely.",
+            ) from exc
 
     @app.get("/api/tax/rules")
     def tax_rules(
@@ -57,6 +74,32 @@ def create_app() -> FastAPI:
         ),
     ) -> dict:
         return get_tax_rule_context_dict(tax_year=tax_year, state_code=state_code)
+
+    @app.post("/api/documents/extract", response_model=DocumentExtractionResponse)
+    def extract_document(document: DocumentInput) -> DocumentExtractionResponse:
+        try:
+            return DocumentExtractionResponse(
+                status="review_required",
+                message=(
+                    "Real document extraction is not available yet. The backend received "
+                    "the document metadata only and did not extract filing-ready fields."
+                ),
+                document=document,
+                warnings=[
+                    AgentWarning(
+                        severity="info",
+                        code="DOCUMENT_EXTRACTION_NOT_AVAILABLE",
+                        message="Document extraction is currently a safe stub.",
+                        recommended_follow_up="Ask the user to manually confirm document fields before analysis.",
+                    )
+                ],
+                missing_information=["Confirmed document fields"],
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail="Document extraction stub could not process the request safely.",
+            ) from exc
 
     return app
 
