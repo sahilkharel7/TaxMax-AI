@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -41,7 +42,16 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health", response_model=HealthResponse)
     def health_check() -> HealthResponse:
-        return HealthResponse(status="ok", service=settings.app_name)
+        live_settings = get_settings()
+        gemini_key = (os.getenv("GEMINI_API_KEY") or live_settings.gemini_api_key or "").strip()
+        return HealthResponse(
+            status="ok",
+            service=live_settings.app_name,
+            ok=True,
+            provider="gemini",
+            model=live_settings.gemini_model,
+            geminiConfigured=bool(gemini_key),
+        )
 
     @app.post("/api/tax/analyze", response_model=TaxAnalysisResponse)
     def analyze(request: TaxScenarioRequest) -> TaxAnalysisResponse:
@@ -78,13 +88,21 @@ def create_app() -> FastAPI:
     @app.post("/api/documents/extract", response_model=DocumentExtractionResponse)
     def extract_document(document: DocumentInput) -> DocumentExtractionResponse:
         try:
+            safe_document = DocumentInput(
+                document_id=document.document_id,
+                document_type=document.document_type,
+                file_name=document.file_name,
+                extraction_status="needs_review",
+                extracted_fields=None,
+                notes=None,
+            )
             return DocumentExtractionResponse(
                 status="review_required",
                 message=(
                     "Real document extraction is not available yet. The backend received "
                     "the document metadata only and did not extract filing-ready fields."
                 ),
-                document=document,
+                document=safe_document,
                 warnings=[
                     AgentWarning(
                         severity="info",

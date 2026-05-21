@@ -29,6 +29,35 @@ class _ReplyRule:
 
 _REPLY_RULES: tuple[_ReplyRule, ...] = (
     _ReplyRule(
+        re.compile(
+            r"\b(file|e-?file|submit|send)\b.*\b(irs|return|taxes?)\b"
+            r"|\b(can|do|will) you file\b"
+            r"|\bfile (my|the) (taxes?|return)\b",
+            re.IGNORECASE,
+        ),
+        (
+            "TaxMax AI cannot file your return with the IRS or any state tax "
+            "authority. E-filing is not available in this prototype. I can help "
+            "you organize and review your information, but you will need to "
+            "file through an authorized preparer or e-file provider."
+        ),
+    ),
+    _ReplyRule(
+        re.compile(
+            r"\b(guarantee|guaranteed|definitely|for sure|exactly)\b.*"
+            r"\b(refund|owe|qualify|eligible|amount|get)\b"
+            r"|\bhow much (refund|will i get|do i (get|owe))\b"
+            r"|\bdo i (qualify|get|definitely)\b",
+            re.IGNORECASE,
+        ),
+        (
+            "I can\u2019t confirm an exact refund amount or final eligibility "
+            "for any credit. TaxMax AI is a review-stage tool only \u2014 "
+            "final amounts and final eligibility require a complete return "
+            "and a qualified tax professional."
+        ),
+    ),
+    _ReplyRule(
         re.compile(r"w-?2", re.IGNORECASE),
         (
             "A W-2 is the wage statement your employer sends each January. "

@@ -34,6 +34,28 @@ ResponseStatus = Literal[
 class HealthResponse(BaseModel):
     status: str = Field(description="Health status for the API service.")
     service: str = Field(description="Human-readable API service name.")
+    ok: bool = Field(
+        default=True,
+        description="Boolean health flag for clients that prefer ok over status.",
+    )
+    provider: str = Field(
+        default="gemini",
+        description="LLM provider currently configured for agent responses.",
+    )
+    model: str = Field(
+        default="",
+        description="Configured LLM model name. Never includes any API key material.",
+    )
+    gemini_configured: bool = Field(
+        default=False,
+        alias="geminiConfigured",
+        description=(
+            "True when a server-side Gemini API key is present. The key itself is "
+            "never returned by this endpoint."
+        ),
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class TaxpayerProfile(BaseModel):
@@ -461,7 +483,12 @@ class ChatRequest(BaseModel):
 
     message: str = Field(
         min_length=1,
-        description="User message to route through the TaxMax Guide workflow.",
+        max_length=4000,
+        description=(
+            "User message to route through the TaxMax Guide workflow. Capped at "
+            "4000 characters so oversized prompts are rejected with a 422 instead "
+            "of consuming agent or model resources."
+        ),
     )
     session_id: Optional[str] = Field(
         default=None,
