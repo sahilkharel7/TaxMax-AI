@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type {
   ManualEntryData,
   T1098Review,
@@ -8,6 +9,9 @@ import type {
 import { Button } from "../components/ui/Button";
 import { Card, SectionHeader } from "../components/ui/Card";
 import { StatusBadge, type StatusTone } from "../components/ui/StatusBadge";
+import { useTaxAnalysis } from "../hooks/useTaxAnalysis";
+import { buildScenarioRequest } from "../lib/scenarioMapping";
+import type { AgentWarningBody } from "../lib/apiTypes";
 
 interface FinalReviewProps {
   w2: W2Review | null;
@@ -15,6 +19,7 @@ interface FinalReviewProps {
   manual: ManualEntryData;
   profile: TaxProfile;
   documents: UploadedDocument[];
+  taxYear?: number;
   onBack: () => void;
   onPrepare: () => void;
   prepared: boolean;
@@ -82,6 +87,7 @@ export function FinalReview({
   manual,
   profile,
   documents,
+  taxYear = 2025,
   onBack,
   onPrepare,
   prepared,
@@ -92,18 +98,50 @@ export function FinalReview({
   const credits = creditsStatus(manual);
   const docs = documentsStatus(documents);
 
-  const warnings: string[] = [];
-  if (income.tone === "missing") warnings.push("No income information found.");
+  const localWarnings: string[] = [];
+  if (income.tone === "missing")
+    localWarnings.push("No income information found.");
   if (
     profile.received1098T === "yes" &&
     education.tone !== "complete"
   )
-    warnings.push("You indicated a 1098-T but it isn’t fully reviewed.");
+    localWarnings.push("You indicated a 1098-T but it isn’t fully reviewed.");
   if (
     profile.received1099 === "yes" &&
     !documents.some((d) => d.kind === "1099-INT")
   )
-    warnings.push("You indicated a 1099 form but none was uploaded.");
+    localWarnings.push("You indicated a 1099 form but none was uploaded.");
+
+  const scenarioCacheKey = useMemo(
+    () =>
+      JSON.stringify({
+        profile,
+        manual,
+        w2,
+        t1098,
+        documents: documents.map((d) => ({
+          id: d.id,
+          kind: d.kind,
+          status: d.status,
+        })),
+        taxYear,
+      }),
+    [profile, manual, w2, t1098, documents, taxYear],
+  );
+
+  const analysis = useTaxAnalysis({
+    cacheKey: scenarioCacheKey,
+    buildScenario: () =>
+      buildScenarioRequest({
+        profile,
+        manual,
+        w2,
+        t1098,
+        documents,
+        taxYear,
+        userGoal: "Final review checklist before preparing review package.",
+      }),
+  });
 
   const rows: { title: string; description: string; status: SectionStatus }[] =
     [
@@ -133,6 +171,12 @@ export function FinalReview({
         status: docs,
       },
     ];
+
+  const apiWarnings = analysis.status === "success" ? analysis.data.warnings : [];
+  const apiMissing =
+    analysis.status === "success" ? analysis.data.missing_information : [];
+  const noWarnings =
+    localWarnings.length === 0 && apiWarnings.length === 0 && apiMissing.length === 0;
 
   return (
     <div className="animate-fade-up mx-auto w-full max-w-3xl space-y-6 px-4 py-8 sm:py-10">
@@ -170,30 +214,78 @@ export function FinalReview({
           <span
             className={[
               "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
-              warnings.length === 0
+              noWarnings
                 ? "bg-emerald-50 text-emerald-600"
                 : "bg-amber-50 text-amber-600",
             ].join(" ")}
           >
-            {warnings.length === 0 ? <CheckIcon /> : <AlertIcon />}
+            {noWarnings ? <CheckIcon /> : <AlertIcon />}
           </span>
           <div className="flex-1">
             <h3 className="text-sm font-semibold text-slate-900">
               Review warnings
             </h3>
-            {warnings.length === 0 ? (
+
+            {analysis.status === "loading" ? (
+              <p className="mt-1 text-xs text-slate-400">
+                Asking review agents…
+              </p>
+            ) : null}
+            {analysis.status === "error" ? (
+              <p className="mt-1 text-xs text-rose-600">
+                Backend agent service is offline. Showing local checks only.
+              </p>
+            ) : null}
+
+            {noWarnings ? (
               <p className="mt-1 text-sm text-slate-600">
                 Nothing looks off. You’re ready to prepare your review package.
               </p>
             ) : (
-              <ul className="mt-2 space-y-1.5 text-sm text-slate-700">
-                {warnings.map((w) => (
-                  <li key={w} className="flex gap-2">
-                    <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-                    {w}
-                  </li>
-                ))}
-              </ul>
+              <div className="mt-2 space-y-3 text-sm text-slate-700">
+                {localWarnings.length > 0 ? (
+                  <ul className="space-y-1.5">
+                    {localWarnings.map((w) => (
+                      <li key={w} className="flex gap-2">
+                        <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                        {w}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+
+                {apiWarnings.length > 0 ? (
+                  <ul className="space-y-1.5">
+                    {apiWarnings.map((w) => (
+                      <li key={w.code} className="flex gap-2">
+                        <SeverityDot severity={w.severity} />
+                        <span>
+                          <span className="font-medium text-slate-800">
+                            {w.code}:
+                          </span>{" "}
+                          {w.message}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+
+                {apiMissing.length > 0 ? (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      Still needed
+                    </p>
+                    <ul className="mt-1 space-y-1.5">
+                      {apiMissing.map((item) => (
+                        <li key={item} className="flex gap-2">
+                          <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
             )}
           </div>
         </div>
@@ -229,6 +321,22 @@ export function FinalReview({
         </Button>
       </div>
     </div>
+  );
+}
+
+function SeverityDot({ severity }: { severity: AgentWarningBody["severity"] }) {
+  const color =
+    severity === "high"
+      ? "bg-rose-500"
+      : severity === "medium"
+        ? "bg-amber-500"
+        : severity === "low"
+          ? "bg-yellow-400"
+          : "bg-slate-400";
+  return (
+    <span
+      className={`mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full ${color}`}
+    />
   );
 }
 

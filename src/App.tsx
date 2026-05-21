@@ -177,6 +177,7 @@ export default function App() {
                 t1098={t1098Review}
                 manual={manual}
                 profile={profile}
+                documents={documents}
                 onContinue={() => goNext("final")}
                 onBack={() => goNext("profile")}
               />
@@ -205,6 +206,13 @@ export default function App() {
           step={step}
           open={chatOpen}
           onClose={() => setChatOpen(false)}
+          scenarioContext={{
+            profile,
+            manual,
+            w2: w2Review,
+            t1098: t1098Review,
+            documents,
+          }}
         />
       </div>
     </div>

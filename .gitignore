@@ -22,5 +22,59 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-backend/.env
+
+# Python / FastAPI backend
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
 backend/.venv
+.venv
+venv/
+env/
+ENV/
+
+# Environment variables (never commit secrets)
+backend/.env
+.env
+.env.*
+!.env.example
+!backend/.env.example
+
+# Packaging / build artifacts
+*.egg
+*.egg-info/
+.eggs/
+build/
+sdist/
+wheels/
+pip-wheel-metadata/
+
+# Test, lint, and type-check caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyre/
+.pytype/
+.tox/
+.nox/
+
+# Coverage reports
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.cover
+*.py,cover
+.hypothesis/
+
+# FastAPI / SQLAlchemy local databases
+*.sqlite
+*.sqlite3
+*.db
+
+# Tooling
+.python-version
+.ipynb_checkpoints/

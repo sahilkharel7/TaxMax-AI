@@ -1,15 +1,32 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import type { ChatMessage, StepId } from "../types";
+import type {
+  ChatMessage,
+  ManualEntryData,
+  StepId,
+  T1098Review,
+  TaxProfile,
+  UploadedDocument,
+  W2Review,
+} from "../types";
 import {
   mockChatReply,
   STEP_CONTEXT_HINTS,
   SUGGESTED_PROMPTS,
 } from "../data/mockData";
+import { ApiError, postChat } from "../lib/api";
+import { buildScenarioRequest } from "../lib/scenarioMapping";
 
 interface ChatbotSidebarProps {
   step: StepId;
   open: boolean;
   onClose: () => void;
+  scenarioContext?: {
+    profile: TaxProfile;
+    manual: ManualEntryData;
+    w2: W2Review | null;
+    t1098: T1098Review | null;
+    documents: UploadedDocument[];
+  };
 }
 
 function welcomeContent(step: StepId): string {
@@ -20,13 +37,17 @@ function welcomeContent(step: StepId): string {
   );
 }
 
-export function ChatbotSidebar({ step, open, onClose }: ChatbotSidebarProps) {
-  // We store only the messages the user has produced (and their replies).
-  // The welcome message is derived from the current step on each render so it
-  // stays contextual without needing an effect.
+export function ChatbotSidebar({
+  step,
+  open,
+  onClose,
+  scenarioContext,
+}: ChatbotSidebarProps) {
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
+  const [usingFallback, setUsingFallback] = useState(false);
+  const sessionIdRef = useRef<string>(crypto.randomUUID());
   const listRef = useRef<HTMLDivElement>(null);
 
   const welcome: ChatMessage = {
@@ -44,7 +65,7 @@ export function ChatbotSidebar({ step, open, onClose }: ChatbotSidebarProps) {
 
   const placeholders = useMemo(() => SUGGESTED_PROMPTS.slice(0, 6), []);
 
-  function sendMessage(text: string) {
+  async function sendMessage(text: string): Promise<void> {
     const trimmed = text.trim();
     if (!trimmed) return;
     const userMsg: ChatMessage = {
@@ -55,25 +76,53 @@ export function ChatbotSidebar({ step, open, onClose }: ChatbotSidebarProps) {
     setHistory((prev) => [...prev, userMsg]);
     setInput("");
     setThinking(true);
-    window.setTimeout(() => {
+
+    const scenario = scenarioContext
+      ? buildScenarioRequest({
+          profile: scenarioContext.profile,
+          manual: scenarioContext.manual,
+          w2: scenarioContext.w2,
+          t1098: scenarioContext.t1098,
+          documents: scenarioContext.documents,
+        })
+      : null;
+
+    try {
+      const result = await postChat({
+        message: trimmed,
+        session_id: sessionIdRef.current,
+        scenario,
+      });
+      const reply: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: result.answer,
+      };
+      setHistory((prev) => [...prev, reply]);
+      setUsingFallback(false);
+    } catch (err) {
       const reply: ChatMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
         content: mockChatReply(trimmed),
       };
       setHistory((prev) => [...prev, reply]);
+      setUsingFallback(true);
+      if (!(err instanceof ApiError)) {
+        console.warn("Chat request failed:", err);
+      }
+    } finally {
       setThinking(false);
-    }, 650);
+    }
   }
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    sendMessage(input);
+    void sendMessage(input);
   }
 
   return (
     <>
-      {/* Mobile backdrop */}
       <div
         className={[
           "fixed inset-0 z-40 bg-slate-900/30 transition-opacity lg:hidden",
@@ -165,6 +214,12 @@ export function ChatbotSidebar({ step, open, onClose }: ChatbotSidebarProps) {
           ) : null}
         </div>
 
+        {usingFallback ? (
+          <div className="border-t border-amber-200 bg-amber-50/70 px-4 py-2 text-[11px] text-amber-900">
+            Using offline replies — backend is unreachable. Start the API to enable contextual answers.
+          </div>
+        ) : null}
+
         {messages.length <= 2 ? (
           <div className="border-t border-slate-200/80 px-4 py-3">
             <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-slate-400">
@@ -175,7 +230,7 @@ export function ChatbotSidebar({ step, open, onClose }: ChatbotSidebarProps) {
                 <button
                   key={p}
                   type="button"
-                  onClick={() => sendMessage(p)}
+                  onClick={() => void sendMessage(p)}
                   className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
                 >
                   {p}
@@ -196,7 +251,7 @@ export function ChatbotSidebar({ step, open, onClose }: ChatbotSidebarProps) {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  sendMessage(input);
+                  void sendMessage(input);
                 }
               }}
               rows={1}
