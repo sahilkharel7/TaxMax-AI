@@ -1,0 +1,436 @@
+import {
+  mockChatReply,
+} from "../data/mockData";
+import type {
+  ChatRequestBody,
+  ChatResponseBody,
+  HealthResponseBody,
+  TaxAnalysisResponseBody,
+  TaxRulesResponseBody,
+  TaxScenarioRequestBody,
+} from "../lib/apiTypes";
+
+export class ApiError extends Error {
+  status: number;
+  detail: unknown;
+
+  constructor(message: string, status: number, detail?: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+const DEFAULT_BASE_URL = "/api";
+
+function envFlag(value: unknown): boolean {
+  return typeof value === "string" && value.toLowerCase() === "true";
+}
+
+export function isBackendEnabled(): boolean {
+  return envFlag(import.meta.env.VITE_USE_BACKEND);
+}
+
+function baseUrl(): string {
+  const fromEnv = import.meta.env.VITE_API_BASE_URL;
+  if (typeof fromEnv === "string" && fromEnv.length > 0) {
+    return fromEnv.replace(/\/+$/, "");
+  }
+  return DEFAULT_BASE_URL;
+}
+
+async function request<T>(
+  path: string,
+  init: RequestInit & { signal?: AbortSignal } = {},
+): Promise<T> {
+  const url = `${baseUrl()}${path}`;
+  const headers = new Headers(init.headers);
+  if (init.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url, { ...init, headers });
+  } catch (err) {
+    throw new ApiError(
+      err instanceof Error ? err.message : "Network request failed",
+      0,
+    );
+  }
+
+  const text = await response.text();
+  let parsed: unknown = undefined;
+  if (text.length > 0) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = text;
+    }
+  }
+
+  if (!response.ok) {
+    throw new ApiError(
+      `Request to ${path} failed (${response.status})`,
+      response.status,
+      parsed,
+    );
+  }
+
+  return parsed as T;
+}
+
+export function getHealth(signal?: AbortSignal): Promise<HealthResponseBody> {
+  if (!isBackendEnabled()) {
+    return Promise.resolve({
+      status: "ok",
+      service: "Mock mode",
+    });
+  }
+
+  return request<HealthResponseBody>("/health", { method: "GET", signal });
+}
+
+export function postChat(
+  body: ChatRequestBody,
+  signal?: AbortSignal,
+): Promise<ChatResponseBody> {
+  if (!isBackendEnabled()) {
+    return Promise.resolve(buildMockChatResponse(body));
+  }
+
+  return request<ChatResponseBody>("/chat", {
+    method: "POST",
+    body: JSON.stringify(body),
+    signal,
+  });
+}
+
+export function postAnalyze(
+  body: TaxScenarioRequestBody,
+  signal?: AbortSignal,
+): Promise<TaxAnalysisResponseBody> {
+  if (!isBackendEnabled()) {
+    return Promise.resolve(buildMockTaxAnalysisResponse(body));
+  }
+
+  return request<TaxAnalysisResponseBody>("/tax/analyze", {
+    method: "POST",
+    body: JSON.stringify(body),
+    signal,
+  });
+}
+
+export function getTaxRules(
+  taxYear: number,
+  stateCode?: string | null,
+  signal?: AbortSignal,
+): Promise<TaxRulesResponseBody> {
+  if (!isBackendEnabled()) {
+    return Promise.resolve(buildMockTaxRulesResponse(taxYear, stateCode));
+  }
+
+  const params = new URLSearchParams({ tax_year: String(taxYear) });
+  if (stateCode) params.set("state_code", stateCode.toUpperCase());
+  return request<TaxRulesResponseBody>(`/tax/rules?${params.toString()}`, {
+    method: "GET",
+    signal,
+  });
+}
+
+function buildMockChatResponse(body: ChatRequestBody): ChatResponseBody {
+  const answer = mockChatReply(body.message);
+  const scenario = body.scenario;
+
+  if (!scenario) {
+    return {
+      status: "draft",
+      answer,
+      next_questions: [
+        "Which tax year would you like to review?",
+        "Do you have your W-2 or other tax documents ready?",
+      ],
+      warnings: [],
+      missing_information: [],
+      disclaimer:
+        "TaxMax AI provides AI-assisted preparation support and does not provide legal, tax, or financial advice. Review all information with a qualified professional before filing.",
+    };
+  }
+
+  const warnings: ChatResponseBody["warnings"] = [];
+  const missing_information: string[] = [];
+  const next_questions: string[] = [];
+
+  if (scenario.profile.tax_year == null) {
+    missing_information.push("Tax year");
+    next_questions.push("Which tax year should I review?");
+  }
+  if (scenario.profile.filing_status == null) {
+    missing_information.push("Filing status");
+    next_questions.push("What filing status are you considering?");
+  }
+  if (
+    scenario.profile.was_student === true &&
+    scenario.profile.received_1098_t == null
+  ) {
+    missing_information.push("Form 1098-T status");
+    next_questions.push("Did you receive a Form 1098-T from your school?");
+    warnings.push({
+      severity: "low",
+      code: "MISSING_1098_T_STATUS",
+      message: "Student status was indicated but 1098-T receipt is unknown.",
+      recommended_follow_up: "Ask whether the user received Form 1098-T.",
+    });
+  }
+
+  return {
+    status: missing_information.length > 0 ? "needs_more_information" : "draft",
+    answer,
+    next_questions: dedupeStrings(next_questions),
+    warnings,
+    missing_information: dedupeStrings(missing_information),
+    disclaimer:
+      "TaxMax AI provides AI-assisted preparation support and does not provide legal, tax, or financial advice. Review all information with a qualified professional before filing.",
+  };
+}
+
+function buildMockTaxAnalysisResponse(
+  body: TaxScenarioRequestBody,
+): TaxAnalysisResponseBody {
+  const findings: TaxAnalysisResponseBody["findings"] = [];
+  const warnings: TaxAnalysisResponseBody["warnings"] = [];
+  const nextQuestions: string[] = [];
+  const missingInformation: string[] = [];
+  const profile = body.profile;
+  const income = body.income;
+  const education = body.education;
+  const documents = body.documents ?? [];
+
+  if (profile.tax_year == null) {
+    missingInformation.push("Tax year");
+    nextQuestions.push("Which tax year should I review?");
+    warnings.push({
+      severity: "medium",
+      code: "MISSING_TAX_YEAR",
+      message: "Tax year is required before a review can be completed.",
+      recommended_follow_up: "Ask the user which tax year should be reviewed.",
+    });
+  }
+
+  if (profile.filing_status == null) {
+    missingInformation.push("Filing status");
+    nextQuestions.push("What filing status are you considering?");
+    warnings.push({
+      severity: "medium",
+      code: "MISSING_FILING_STATUS",
+      message: "Filing status is missing and may affect the review.",
+      recommended_follow_up: "Ask the user to confirm their expected filing status.",
+    });
+  }
+
+  if (profile.resident_state == null) {
+    missingInformation.push("Resident state");
+    nextQuestions.push("What is your resident state?");
+    warnings.push({
+      severity: "medium",
+      code: "MISSING_RESIDENT_STATE",
+      message: "Resident state is missing and state review requires confirmation.",
+      recommended_follow_up: "Ask the user for their resident state.",
+    });
+  } else {
+    findings.push({
+      agent_name: "State Tax Agent",
+      category: "state",
+      summary:
+        `${profile.resident_state.toUpperCase()} state review may apply and requires confirmation against state-specific rules.`,
+      confidence: "medium",
+      rationale: "Resident state information was supplied.",
+      suggested_action:
+        "Use the resident state as review context until verified rule details are loaded.",
+      supporting_documents: [],
+    });
+  }
+
+  if (profile.can_be_claimed_as_dependent == null) {
+    warnings.push({
+      severity: "medium",
+      code: "MISSING_DEPENDENCY_CONTEXT",
+      message: "Dependency status has not been confirmed.",
+      recommended_follow_up:
+        "Ask whether another taxpayer can claim the user as a dependent.",
+    });
+    nextQuestions.push(
+      "Can another taxpayer claim you as a dependent for the tax year?",
+    );
+    missingInformation.push("Dependency status");
+  }
+
+  if (income == null) {
+    missingInformation.push("Income inputs");
+    nextQuestions.push("Do you have W-2 or 1099 income to review?");
+    warnings.push({
+      severity: "medium",
+      code: "MISSING_INCOME_INPUTS",
+      message: "Income inputs are missing.",
+      recommended_follow_up: "Confirm whether the user had W-2 wages or 1099 income.",
+    });
+  } else {
+    if (income.w2_wages != null) {
+      findings.push({
+        agent_name: "Income Agent",
+        category: "income",
+        summary:
+          "W-2 wage information was supplied and should be reviewed against the source W-2.",
+        confidence: "medium",
+        rationale: "W-2 wage input was present.",
+        suggested_action:
+          "Confirm Box 1 and withholding details before deeper review.",
+        supporting_documents: [],
+      });
+    }
+
+    if (income.w2_wages == null && income.self_employment_income == null) {
+      warnings.push({
+        severity: "medium",
+        code: "MISSING_INCOME_INPUTS",
+        message: "No wage or self-employment income has been provided.",
+        recommended_follow_up:
+          "Confirm whether the user had W-2 wages, 1099 income, or both.",
+      });
+    }
+  }
+
+  const educationRelevant =
+    profile.was_student === true ||
+    profile.received_1098_t === true ||
+    education?.is_student === true ||
+    education?.received_1098_t === true;
+
+  if (educationRelevant) {
+    findings.push({
+      agent_name: "Education Agent",
+      category: "education",
+      summary:
+        "Education inputs appear relevant and should be reviewed with Form 1098-T details.",
+      confidence: "medium",
+      rationale: "Student status or 1098-T receipt was indicated.",
+      suggested_action:
+        "Confirm school, qualified expenses, scholarships, and dependency status.",
+      supporting_documents: [],
+    });
+
+    if (education?.qualified_expenses == null) {
+      missingInformation.push("Qualified education expenses");
+      nextQuestions.push("What qualified education expenses did you pay?");
+    }
+
+    if (profile.received_1098_t == null && education?.received_1098_t == null) {
+      warnings.push({
+        severity: "low",
+        code: "MISSING_1098_T_STATUS",
+        message:
+          "Student status is present, but Form 1098-T receipt is unknown.",
+        recommended_follow_up: "Ask whether the user received Form 1098-T.",
+      });
+    }
+  }
+
+  for (const document of documents) {
+    if (document.extraction_status === "needs_review") {
+      findings.push({
+        agent_name: "Document Agent",
+        category: "documents",
+        summary: `Document ${document.file_name ?? document.document_id ?? document.document_type} has extracted fields that need user review.`,
+        confidence: "low",
+        rationale: "Document extraction status is marked needs_review.",
+        suggested_action: "Verify each extracted field against the source document.",
+        supporting_documents: document.document_id ? [document.document_id] : [],
+      });
+    }
+    if (document.extraction_status === "error") {
+      warnings.push({
+        severity: "high",
+        code: "DOCUMENT_EXTRACTION_ERROR",
+        message: `Extraction error for document ${document.file_name ?? document.document_id ?? document.document_type}.`,
+        recommended_follow_up:
+          "Ask the user to re-upload the document or enter values manually.",
+      });
+    }
+  }
+
+  if (findings.length === 0) {
+    findings.push({
+      agent_name: "Summary Agent",
+      category: "summary",
+      summary:
+        "Initial review context is present and can be refined as more facts are confirmed.",
+      confidence: "low",
+      rationale: "Mock analysis uses only the currently supplied scenario fields.",
+      suggested_action:
+        "Continue collecting and confirming documents before filing decisions.",
+      supporting_documents: [],
+    });
+  }
+
+  const status: TaxAnalysisResponseBody["status"] =
+    missingInformation.length > 0
+      ? "needs_more_information"
+      : warnings.length > 0
+        ? "review_required"
+        : "draft";
+
+  return {
+    status,
+    findings,
+    warnings,
+    next_questions: dedupeStrings(nextQuestions),
+    missing_information: dedupeStrings(missingInformation),
+    disclaimer:
+      "TaxMax AI provides AI-assisted preparation support and does not provide legal, tax, or financial advice. Review all information with a qualified professional before filing.",
+  };
+}
+
+function buildMockTaxRulesResponse(
+  taxYear: number,
+  stateCode?: string | null,
+): TaxRulesResponseBody {
+  return {
+    status: "ok",
+    tax_year: taxYear,
+    federal: {
+      jurisdiction: "US",
+      scope: "federal",
+      tax_year: taxYear,
+      last_reviewed: "mock",
+      source_references: ["Mock mode"],
+      standard_deduction: {
+        status: "placeholder",
+        todo: "Mock mode does not expose verified bracket data.",
+      },
+      tax_brackets: {
+        status: "placeholder",
+        todo: "Mock mode does not expose verified bracket data.",
+      },
+    },
+    state_code: stateCode ? stateCode.toUpperCase() : null,
+    state: stateCode
+      ? {
+          jurisdiction: stateCode.toUpperCase(),
+          scope: "state",
+          tax_year: taxYear,
+          last_reviewed: "mock",
+          source_references: ["Mock mode"],
+        }
+      : null,
+    source_references: ["Mock mode"],
+    last_reviewed: {
+      federal: "mock",
+      ...(stateCode ? { state: "mock" } : {}),
+    },
+  };
+}
+
+function dedupeStrings(values: string[]): string[] {
+  return [...new Set(values)];
+}

@@ -79,6 +79,7 @@ function BackendStatus({
   status: BackendHealthStatus;
   service?: string;
 }) {
+  const isMockMode = typeof service === "string" && /mock/i.test(service);
   const tone =
     status === "online"
       ? "text-emerald-600"
@@ -88,7 +89,9 @@ function BackendStatus({
 
   const label =
     status === "online"
-      ? `API connected${service ? ` · ${service}` : ""}`
+      ? isMockMode
+        ? "Mock mode"
+        : `API connected${service ? ` · ${service}` : ""}`
       : status === "offline"
         ? "API offline"
         : "Checking API…";

@@ -62,13 +62,15 @@ Copy `backend/.env.example` to `backend/.env` if you need to override
 defaults:
 
 ```
-GEMINI_API_KEY=your-gemini-api-key   # not yet wired into agents
+GEMINI_API_KEY=your-gemini-api-key
 GEMINI_MODEL=gemini-1.5-flash
 ```
 
-To point the frontend at a different backend host (e.g. a deployed instance),
-set `VITE_BACKEND_URL` before running `npm run dev`, or `VITE_API_BASE_URL`
-to skip the dev proxy entirely.
+To switch the frontend between mock mode and backend mode, set
+`VITE_USE_BACKEND=true`. To point the frontend at a different backend host
+(e.g. a deployed instance), set `VITE_API_BASE_URL` before running
+`npm run dev`. If you use the Vite dev proxy, `VITE_API_BASE_URL` can stay
+unset.
 
 ### Other scripts
 

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import type {
   ManualEntryData,
   T1098Review,
@@ -11,6 +11,7 @@ import { Card, SectionHeader } from "../components/ui/Card";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { useTaxAnalysis } from "../hooks/useTaxAnalysis";
 import { buildScenarioRequest } from "../lib/scenarioMapping";
+import { isBackendEnabled } from "../lib/api";
 import type { AgentWarningBody } from "../lib/apiTypes";
 
 interface SummaryProps {
@@ -106,6 +107,7 @@ export function Summary({
         userGoal: "Summarize what is missing or needs review.",
       }),
   });
+  const backendMode = isBackendEnabled();
 
   return (
     <div className="animate-fade-up mx-auto w-full max-w-3xl space-y-6 px-4 py-8 sm:py-10">
@@ -163,7 +165,7 @@ export function Summary({
         </div>
       </Card>
 
-      <AgentInsightsCard analysis={analysis} />
+      <AgentInsightsCard analysis={analysis} backendMode={backendMode} />
 
       <div className="rounded-2xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-xs text-amber-900">
         TaxMax AI provides AI-assisted preparation support. It does not provide
@@ -182,29 +184,40 @@ export function Summary({
 
 function AgentInsightsCard({
   analysis,
+  backendMode,
 }: {
   analysis: ReturnType<typeof useTaxAnalysis>;
+  backendMode: boolean;
 }) {
   return (
     <Card>
-      <div className="flex items-center justify-between gap-4">
-        <h3 className="text-sm font-semibold text-slate-900">Agent insights</h3>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">
+            Agent insights
+          </h3>
+          <p className="mt-1 text-xs text-slate-500">
+            {backendMode
+              ? "Live backend mode is enabled for this summary."
+              : "Mock mode is enabled so you can keep using the app without the backend."}
+          </p>
+        </div>
         <StatusBadge tone={toneForAnalysis(analysis)}>
           {labelForAnalysis(analysis)}
         </StatusBadge>
       </div>
 
       {analysis.status === "loading" ? (
-        <p className="mt-3 text-sm text-slate-500">
-          Asking the TaxMax review agents to look at your scenario…
-        </p>
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+          Reviewing your scenario and preparing a plain-language summary…
+        </div>
       ) : null}
 
       {analysis.status === "error" ? (
-        <p className="mt-3 text-sm text-rose-700">
-          Couldn’t reach the review service. Start the backend (uvicorn on port
-          8000) and revisit this step.
-        </p>
+        <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
+          The backend review service could not be reached. The rest of the
+          summary remains available.
+        </div>
       ) : null}
 
       {analysis.status === "success" ? (
@@ -231,106 +244,129 @@ function AgentInsightsBody({
 
   if (!hasContent) {
     return (
-      <p className="mt-3 text-sm text-slate-500">
-        Nothing flagged yet. The agents will surface findings as you add
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+        Nothing flagged yet. The review agents will surface items as you add
         information.
-      </p>
+      </div>
     );
   }
 
   return (
-    <div className="mt-4 space-y-4 text-sm text-slate-700">
-      {data.missing_information.length > 0 ? (
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Still needed
-          </p>
-          <ul className="mt-1 space-y-1">
-            {data.missing_information.map((item) => (
-              <li key={item} className="flex gap-2">
-                <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400" />
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+    <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      <AnalysisSectionCard title="Findings" emptyLabel="No findings yet">
+        {data.findings.map((finding, idx) => (
+          <div
+            key={`${finding.agent_name}-${finding.category}-${idx}`}
+            className="rounded-xl border border-slate-200 bg-white p-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-slate-500">
+                {finding.agent_name} · {finding.category}
+              </p>
+              <StatusBadge tone="info">{finding.confidence}</StatusBadge>
+            </div>
+            <p className="mt-2 text-sm text-slate-800">{finding.summary}</p>
+            {finding.suggested_action ? (
+              <p className="mt-2 text-xs text-slate-500">
+                Next: {finding.suggested_action}
+              </p>
+            ) : null}
+          </div>
+        ))}
+      </AnalysisSectionCard>
 
-      {data.next_questions.length > 0 ? (
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Suggested next questions
-          </p>
-          <ul className="mt-1 space-y-1">
-            {data.next_questions.map((q) => (
-              <li key={q} className="flex gap-2">
-                <span className="mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />
-                {q}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <AnalysisSectionCard title="Warnings" emptyLabel="No warnings yet">
+        {data.warnings.map((warning) => (
+          <div
+            key={warning.code}
+            className="rounded-xl border border-slate-200 bg-white p-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-slate-500">
+                {warning.code}
+              </p>
+              <StatusBadge tone={toneForSeverity(warning.severity)}>
+                {warning.severity}
+              </StatusBadge>
+            </div>
+            <p className="mt-2 text-sm text-slate-800">{warning.message}</p>
+            {warning.recommended_follow_up ? (
+              <p className="mt-2 text-xs text-slate-500">
+                Follow-up: {warning.recommended_follow_up}
+              </p>
+            ) : null}
+          </div>
+        ))}
+      </AnalysisSectionCard>
 
-      {data.warnings.length > 0 ? (
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Warnings
-          </p>
-          <ul className="mt-1 space-y-1">
-            {data.warnings.map((w) => (
-              <li key={w.code} className="flex gap-2">
-                <SeverityDot severity={w.severity} />
-                <span>
-                  <span className="font-medium text-slate-800">{w.code}:</span>{" "}
-                  {w.message}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <AnalysisSectionCard
+        title="Missing information"
+        emptyLabel="No missing information"
+      >
+        {data.missing_information.map((item) => (
+          <div
+            key={item}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+          >
+            {item}
+          </div>
+        ))}
+      </AnalysisSectionCard>
 
-      {data.findings.length > 0 ? (
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Findings
-          </p>
-          <ul className="mt-1 space-y-2">
-            {data.findings.map((f, idx) => (
-              <li key={`${f.agent_name}-${idx}`} className="rounded-xl bg-slate-50 px-3 py-2">
-                <p className="text-xs font-medium text-slate-500">
-                  {f.agent_name} · {f.category}
-                </p>
-                <p className="mt-1 text-sm text-slate-800">{f.summary}</p>
-                {f.suggested_action ? (
-                  <p className="mt-1 text-xs text-slate-500">
-                    Next: {f.suggested_action}
-                  </p>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <AnalysisSectionCard
+        title="Next questions"
+        emptyLabel="No follow-up questions"
+      >
+        {data.next_questions.map((question) => (
+          <div
+            key={question}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+          >
+            {question}
+          </div>
+        ))}
+      </AnalysisSectionCard>
     </div>
   );
 }
 
-function SeverityDot({ severity }: { severity: AgentWarningBody["severity"] }) {
-  const color =
-    severity === "high"
-      ? "bg-rose-500"
-      : severity === "medium"
-        ? "bg-amber-500"
-        : severity === "low"
-          ? "bg-yellow-400"
-          : "bg-slate-400";
+function AnalysisSectionCard({
+  title,
+  emptyLabel,
+  children,
+}: {
+  title: string;
+  emptyLabel: string;
+  children: ReactNode;
+}) {
+  const childArray = Array.isArray(children) ? children : [children];
+  const hasItems = childArray.some(Boolean);
+
   return (
-    <span
-      className={`mt-1.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full ${color}`}
-    />
+    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        {title}
+      </p>
+      <div className="mt-3 space-y-3">
+        {hasItems ? (
+          children
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">
+            {emptyLabel}
+          </div>
+        )}
+      </div>
+    </div>
   );
+}
+
+function toneForSeverity(
+  severity: AgentWarningBody["severity"],
+): "complete" | "review" | "missing" | "info" | "neutral" {
+  if (severity === "high") return "missing";
+  if (severity === "medium") return "review";
+  if (severity === "low") return "info";
+  return "neutral";
 }
 
 function toneForAnalysis(

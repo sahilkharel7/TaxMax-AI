@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ApiError, getHealth } from "../lib/api";
+import { ApiError, getHealth, isBackendEnabled } from "../lib/api";
 
 export type BackendHealthStatus = "checking" | "online" | "offline";
 
@@ -15,6 +15,11 @@ export function useBackendHealth(): BackendHealthState {
   const [state, setState] = useState<BackendHealthState>({ status: "checking" });
 
   useEffect(() => {
+    if (!isBackendEnabled()) {
+      setState({ status: "online", service: "Mock mode" });
+      return;
+    }
+
     let cancelled = false;
     const controller = new AbortController();
 
