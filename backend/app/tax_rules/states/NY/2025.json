@@ -1,0 +1,30 @@
+{
+  "jurisdiction": "NY",
+  "scope": "state",
+  "tax_year": 2025,
+  "last_reviewed": "2026-05-21",
+  "source_references": [
+    "New York State Department of Taxation and Finance forms and guidance landing pages",
+    "New York State 2025 tax year guidance, pending final backend rule review"
+  ],
+  "filing_status_rules": {
+    "status": "placeholder",
+    "todo": "TODO: Add verified New York filing status rule metadata before using this in analysis."
+  },
+  "state_tax_brackets": {
+    "status": "placeholder",
+    "todo": "TODO: Add verified New York 2025 tax brackets. Do not use placeholder data for calculations."
+  },
+  "credits": {
+    "status": "placeholder",
+    "todo": "TODO: Add reviewed New York credit metadata only after source validation."
+  },
+  "deductions": {
+    "status": "placeholder",
+    "todo": "TODO: Add reviewed New York deduction metadata only after source validation."
+  },
+  "notes": [
+    "Placeholder state rule file for agent context only.",
+    "No detailed brackets or eligibility determinations are encoded yet."
+  ]
+}

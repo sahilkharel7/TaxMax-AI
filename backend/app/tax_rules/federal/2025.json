@@ -1,0 +1,30 @@
+{
+  "jurisdiction": "US",
+  "scope": "federal",
+  "tax_year": 2025,
+  "last_reviewed": "2026-05-21",
+  "source_references": [
+    "IRS.gov federal tax forms and publications landing pages",
+    "IRS.gov tax year 2025 updates and guidance, pending final backend rule review"
+  ],
+  "standard_deduction": {
+    "status": "placeholder",
+    "todo": "TODO: Add verified 2025 standard deduction values from authoritative IRS sources before using this in analysis."
+  },
+  "tax_brackets": {
+    "status": "placeholder",
+    "todo": "TODO: Add verified 2025 federal tax brackets. Do not use placeholder data for calculations."
+  },
+  "credits": {
+    "status": "placeholder",
+    "todo": "TODO: Add reviewed credit metadata only after source validation."
+  },
+  "deductions": {
+    "status": "placeholder",
+    "todo": "TODO: Add reviewed deduction metadata only after source validation."
+  },
+  "notes": [
+    "Placeholder rule file for agent context only.",
+    "No detailed brackets or eligibility determinations are encoded yet."
+  ]
+}
